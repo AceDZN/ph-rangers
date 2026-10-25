@@ -110,7 +110,37 @@ export class Bot {
     if (this.known(c) || this.done) return;
     if (this.game.gadgets.mist <= 0) this.refill();
     if (this.game.gadgets.mist <= 0) return;
-    this.throw('mist', c);
+    // Aim at the middle of the unmeasured suspect ground around this cell, like a player would.
+    const g = this.game.grid;
+    const [cx, cz] = g.center(c);
+    let sx = 0;
+    let sz = 0;
+    let n = 0;
+    for (let k = 0; k < g.count; k++) {
+      if (!g.suspect[k] || this.known(k)) continue;
+      const [x, z] = g.center(k);
+      if (Math.hypot(x - cx, z - cz) > 8) continue;
+      sx += x;
+      sz += z;
+      n++;
+    }
+    if (n === 0) {
+      this.throw('mist', c);
+      return;
+    }
+    // Keep the target cell inside the cloud.
+    let tx = sx / n;
+    let tz = sz / n;
+    const d = Math.hypot(tx - cx, tz - cz);
+    if (d > 6) {
+      tx = cx + ((tx - cx) / d) * 6;
+      tz = cz + ((tz - cz) / d) * 6;
+    }
+    this.approach(c, 12);
+    this.aimAt(tx, tz);
+    this.tick(2);
+    this.game.throwGadget('mist');
+    this.wait(1.2);
   }
 
   /** Mist every suspect cell not yet measured (nearest first), refilling mist at wagons. */
@@ -181,6 +211,7 @@ export class Bot {
   /** Keep every listed cell in band until the mission ends or time runs out. */
   maintain(cellsIn: number[], maxT: number, allowX10 = true) {
     let cells = [...cellsIn];
+    let calm = 0;
     const g = this.game.grid;
     const t0 = this.game.t;
     while (!this.done && this.game.t - t0 < maxT) {
@@ -203,9 +234,12 @@ export class Bot {
         }
       }
       if (worst < 0) {
+        // Everything listed looks fine: settle briefly, then move on instead of idling.
+        if (calm++ >= 2) return;
         this.wait(0.5);
         continue;
       }
+      calm = 0;
       const b = g.band(worst);
       this.titrate(worst, b.lo, b.hi, 15, allowX10);
     }

@@ -52,6 +52,8 @@ export interface MissionDef {
   start: { x: number; z: number; yaw: number };
   /** Cells inside this rectangle must end in their band (± tol). */
   area: Rect;
+  /** Optional narrower set of graded cells (overrides `area`). */
+  watch?: (g: Grid) => number[];
   tol: number;
   /** Earliest time the mission can be won (leaks / storm must be over). */
   minTime: number;
@@ -143,7 +145,7 @@ export const MISSIONS: MissionDef[] = [
     tol: 0.5,
     minTime: 0,
     setup: (g) => {
-      const slug = g.creekCells.slice(18, 22);
+      const slug = g.creekCells.slice(26, 29);
       for (const c of slug) g.setPH(c, 2);
       const bank = [at(g, 20, 13), at(g, 21, 13)];
       for (const c of bank) g.setPH(c, 3);
@@ -317,7 +319,7 @@ export const MISSIONS: MissionDef[] = [
     start: { x: 52, z: 52, yaw: Math.PI * 0.5 },
     area: { x0: 0, z0: 0, x1: 96, z1: 96 },
     tol: 0.5,
-    minTime: 78,
+    minTime: 62,
     setup: (g) => {
       const berries = cellsOfKind(g, Kind.Blueberry);
       for (const c of berries) g.setPH(c, 5);
@@ -325,11 +327,18 @@ export const MISSIONS: MissionDef[] = [
       for (const c of lime) g.setPH(c, 10.5);
       return { spill: lime };
     },
-    sources: (g) => [{ cell: at(g, 12, 9), excessPerSec: -0.0012, waterPerSec: 0, from: 0, to: 50 }],
+    sources: (g) => [{ cell: at(g, 12, 9), excessPerSec: -0.0012, waterPerSec: 0, from: 0, to: 30 }],
+    // Graded: the quarry leak area and the places to protect, not every acid raindrop in the valley.
+    watch: (g) => {
+      const [lx, lz] = g.center(at(g, 12, 9));
+      const out = new Set(g.cellsInRadius(lx, lz, 9));
+      for (const k of [Kind.Hive, Kind.School, Kind.Pond]) for (const c of cellsOfKind(g, k)) out.add(c);
+      return [...out];
+    },
     rain: (t) => {
-      if (t < 6 || t > 76) return null;
-      const cx = 104 - (118 * (t - 6)) / 70;
-      return { x0: cx - 8, x1: cx + 8, acidPerSec: 0.00016, waterPerSec: 0.25 };
+      if (t < 4 || t > 60) return null;
+      const cx = 104 - (118 * (t - 4)) / 56;
+      return { x0: cx - 8, x1: cx + 8, acidPerSec: 0.0002, waterPerSec: 0.3 };
     },
     assets: [
       { id: 'pond', name: 'בריכת הדגים', icon: 'fish', lo: 6.5, hi: 8.5, decay: 5, cells: (g) => g.pondCells, at: [20, 83] },
@@ -370,16 +379,17 @@ export const MISSIONS: MissionDef[] = [
     ],
     layout: NIGHT,
     night: true,
-    start: { x: 36, z: 62, yaw: Math.PI * 0.9 },
+    start: { x: 36, z: 54, yaw: Math.PI * 0.6 },
     area: { x0: 0, z0: 0, x1: 96, z1: 96 },
     tol: 0.5,
     minTime: 0,
     setup: (g) => {
-      const base = g.creekCells.slice(16, 20);
+      const base = g.creekCells.slice(22, 25);
       for (const c of base) g.setPH(c, 11.3);
       const acid = [at(g, 17, 19), at(g, 17, 20)];
       for (const c of acid) g.setPH(c, 2.6);
-      const berries = cellsOfKind(g, Kind.Blueberry);
+      // Someone limed the half of the blueberry bed nearest the road.
+      const berries = cellsOfKind(g, Kind.Blueberry).filter((c) => g.center(c)[0] > 22);
       for (const c of berries) g.setPH(c, 6.2);
       for (const c of g.pondCells) g.setPH(c, 8.3);
       return { spill: [...base, ...acid, ...berries] };

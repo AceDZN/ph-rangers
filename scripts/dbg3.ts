@@ -1,0 +1,13 @@
+import { Game } from '../src/sim/game';
+import { NO_INPUT } from '../src/sim/game';
+const id = process.argv[2] ?? 'm5-storm';
+const T = +(process.argv[3] ?? 62);
+const g = new Game(id);
+while (g.t < T && g.status === 'play') g.update(1 / 60, { ...NO_INPUT, aimX: g.player.x, aimZ: g.player.z });
+const kinds = ['soil','path','creek','pond','blue','hive','school','quarry','orchard'];
+const oob = g.contaminated();
+const by: Record<string, number> = {};
+for (const c of oob) by[kinds[g.grid.kind[c]]] = (by[kinds[g.grid.kind[c]]] ?? 0) + 1;
+let sus = 0; for (let c = 0; c < g.grid.count; c++) if (g.grid.suspect[c]) sus++;
+console.log(id, 't', g.t.toFixed(0), g.status, g.failReason, 'oob', oob.length, JSON.stringify(by), 'suspects', sus, JSON.stringify(g.assets.map(a=>[a.id, +a.pH.toFixed(2), Math.round(a.health)])));
+console.log(oob.slice(0, 40).map(c => g.grid.center(c).join(',') + ':' + g.grid.pH[c].toFixed(1)).join(' '));

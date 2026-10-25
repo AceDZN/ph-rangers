@@ -205,6 +205,15 @@ export class Game {
     this.restored = new Set();
     this.mistCharge = 0;
     this.wilt = new Float32Array(this.grid.count);
+    this.watch = new Uint8Array(this.grid.count);
+    if (m.watch) for (const c of m.watch(this.grid)) this.watch[c] = 1;
+    else {
+      const A = m.area;
+      for (let c = 0; c < this.grid.count; c++) {
+        const [x, z] = this.grid.center(c);
+        if (x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1) this.watch[c] = 1;
+      }
+    }
     this.tutorialStep = 0;
     this.hint = '';
     this.hintIndex = 0;
@@ -570,7 +579,7 @@ export class Game {
     // Ground that stays well outside its band wilts after a while: plants show *where*
     // something is wrong (never which way, never when it is fixed), so the spread is visible.
     for (let c = 0; c < g.count; c++) {
-      if (g.suspect[c]) continue;
+      if (g.suspect[c] || !this.watch[c]) continue;
       if (!g.inBand(c, m.tol + 0.3)) {
         this.wilt[c] += dt;
         if (this.wilt[c] > WILT_TIME) g.suspect[c] = 1;
@@ -614,10 +623,11 @@ export class Game {
     } else this.holdT = 0;
   }
 
+  /** Cells this mission grades (its watch zone, or every cell inside its area rectangle). */
+  private watch = new Uint8Array(0);
+
   private inArea(c: number): boolean {
-    const [x, z] = this.grid.center(c);
-    const A = this.mission.area;
-    return x >= A.x0 && x <= A.x1 && z >= A.z0 && z <= A.z1;
+    return this.watch[c] === 1;
   }
 
   /** Cells in the mission area outside their band (± tolerance). */

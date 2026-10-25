@@ -791,9 +791,10 @@ function updateCamera(dt: number) {
   }
   const { fx: f, fz, rx, rz } = cameraBasis();
   // Over-the-shoulder chase camera like the mockups: ranger lower-left, valley ahead.
-  const dist = 4.8 + camPitch * 0.8;
+  const portrait = window.innerWidth < window.innerHeight;
+  const dist = (portrait ? 5.6 : 4.8) + camPitch * 0.8;
   const height = 2.0 + camPitch * 2.4;
-  const side = 1.2;
+  const side = portrait ? 0.35 : 1.2;
   const target = new THREE.Vector3(p.x - f * dist + rx * side, p.y + height, p.z - fz * dist + rz * side);
   const L = game.mission.layout;
   target.y = Math.max(target.y, terrainHeight(L, target.x, target.z) + 1.2);

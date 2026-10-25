@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d3b2a" />
+    <title>סיירת ה-pH</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="עולם המשחק"></canvas>
+      <div id="badges" aria-hidden="true"></div>
+      <div id="hud" hidden>
+        <div class="tl">
+          <div class="panel timer"><span class="clock" aria-hidden="true">⏱</span><bdi id="time" dir="ltr">0:00</bdi><div class="bar"><i id="timebar"></i></div></div>
+          <div class="panel assets" id="assets"></div>
+        </div>
+        <div class="tr panel mission">
+          <div class="mtitle"><span class="flag" aria-hidden="true"></span><b id="mtitle"></b></div>
+          <div class="mobj"><span class="target" aria-hidden="true">◎</span><span id="mobj"></span></div>
+        </div>
+        <div id="tutorial" class="callout" hidden></div>
+        <div id="toast" class="toast" hidden></div>
+        <div id="reticle"><i></i><span id="readout"></span></div>
+        <div class="br">
+          <div class="tank panel" id="tank">
+            <div class="tank-ph"><small>pH</small><bdi id="tankph" dir="ltr">12</bdi></div>
+            <div class="tank-fill"><i id="tankfill"></i></div>
+            <button class="strength" id="strength" type="button" title="חוזק (X)"><bdi dir="ltr">×1</bdi></button>
+          </div>
+          <div class="valves panel" role="group" aria-label="שסתומים">
+            <button type="button" class="valve acid" data-valve="acid" title="חומצה (1)"><span class="vi"></span><small>חומצה <kbd>1</kbd></small><b class="lvl"><i></i></b></button>
+            <button type="button" class="valve base" data-valve="base" title="בסיס (2)"><span class="vi"></span><small>בסיס <kbd>2</kbd></small><b class="lvl"><i></i></b></button>
+            <button type="button" class="valve water" data-valve="water" title="מים (3)"><span class="vi"></span><small>מים <kbd>3</kbd></small><b class="lvl"><i></i></b></button>
+          </div>
+        </div>
+        <div class="bl gadgets panel" role="group" aria-label="אינדיקטורים">
+          <button type="button" class="gadget" data-gadget="litmus" title="נייר לקמוס (R)"><span class="gi litmus"></span><small>לקמוס <kbd>R</kbd></small><bdi class="cnt" dir="ltr">×0</bdi></button>
+          <button type="button" class="gadget" data-gadget="phenol" title="פנולפתלאין (F)"><span class="gi phenol"></span><small>פנולפתלאין <kbd>F</kbd></small><bdi class="cnt" dir="ltr">×0</bdi></button>
+          <button type="button" class="gadget" data-gadget="mist" title="ערפל אוניברסלי (G)"><span class="gi mist"></span><small>אוניברסלי <kbd>G</kbd></small><bdi class="cnt" dir="ltr">×0</bdi></button>
+          <button type="button" class="gadget" data-gadget="canister" title="נוגד חומצה (T)"><span class="gi canister"></span><small>נוגד חומצה <kbd>T</kbd></small><bdi class="cnt" dir="ltr">×0</bdi></button>
+        </div>
+        <div class="topbtns">
+          <button type="button" id="btn-hint" title="רמז (H)">💡 רמז</button>
+          <button type="button" id="btn-pause" title="השהיה (Esc)">❚❚</button>
+        </div>
+        <div id="hintbox" class="callout hint" hidden></div>
+        <div id="touch" hidden>
+          <div id="stick"><i></i></div>
+          <button type="button" id="tspray">ריסוס</button>
+        </div>
+      </div>
+
+      <div id="title" class="screen">
+        <div class="card big">
+          <h1>סיירת ה-pH</h1>
+          <p class="sub">רוצו, מדדו, רססו – והחזירו את העמק לחיים.</p>
+          <div id="missionlist" class="missions"></div>
+          <div class="controls">
+            <p><b>מחשב:</b> WASD תנועה · עכבר כיוון (לחצו על המסך לנעילה) · לחיצה/רווח ריסוס (לחיצה קצרה = פְּרִיץ קטן) · 1/2/3 שסתום · X חוזק · R לקמוס · F פנולפתלאין · G ערפל אוניברסלי · T נוגד חומצה · Shift ריצה · H רמז · Esc השהיה</p>
+            <p><b>מגע:</b> ג׳ויסטיק משמאל · גררו בצד ימין לכיוון · כפתור ריסוס</p>
+          </div>
+          <label class="opt"><input type="checkbox" id="opt-motion" /> הפחתת תנועה</label>
+          <label class="opt"><input type="checkbox" id="opt-mute" /> השתקה</label>
+        </div>
+      </div>
+
+      <div id="brief" class="screen" hidden>
+        <div class="card">
+          <div class="kicker" id="bkicker"></div>
+          <h2 id="btitle"></h2>
+          <p class="tag" id="btag"></p>
+          <ul id="blist"></ul>
+          <div id="bassets" class="chips"></div>
+          <button type="button" class="primary" id="bgo">יוצאים לדרך ▶</button>
+        </div>
+      </div>
+
+      <div id="result" class="screen" hidden>
+        <div class="card">
+          <h2 id="rtitle"></h2>
+          <div class="stars" id="rstars"></div>
+          <p id="rtext"></p>
+          <p class="explain" id="rexplain"></p>
+          <div class="rstats" id="rstats"></div>
+          <div class="row">
+            <button type="button" class="primary" id="rnext">המשימה הבאה ▶</button>
+            <button type="button" id="rretry">נסו שוב ↻</button>
+            <button type="button" id="rmenu">תפריט</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pause" class="screen" hidden>
+        <div class="card">
+          <h2>הפסקה</h2>
+          <div class="row col">
+            <button type="button" class="primary" id="presume">המשך ▶</button>
+            <button type="button" id="prestart">התחלה מחדש ↻</button>
+            <button type="button" id="pmenu">תפריט משימות</button>
+          </div>
+          <label class="opt"><input type="checkbox" id="opt-motion2" /> הפחתת תנועה</label>
+          <label class="opt"><input type="checkbox" id="opt-mute2" /> השתקה</label>
+          <p class="small">צבעי האינדיקטור תמיד מופיעים יחד עם מספר או סמל.</p>
+        </div>
+      </div>
+
+      <div id="loading" class="screen"><div class="card"><p>טוענים את העמק…</p></div></div>
+      <div id="glerror" class="screen" hidden><div class="card"><p>הגרפיקה (WebGL) נעצרה. לחצו לטעינה מחדש.</p><button type="button" class="primary" onclick="location.reload()">טעינה מחדש</button></div></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

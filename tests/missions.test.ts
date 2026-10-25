@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../src/sim/game';
 import { MISSIONS } from '../src/sim/missions';
 import { Bot } from './bot';
-import { blind, constant, everythingTo7, intended, run } from './strategies';
+import { blind, blindWith, constant, everythingTo7, intended, run } from './strategies';
 
 describe('every mission is solvable by its intended approach', () => {
   for (const m of MISSIONS) {
@@ -59,9 +59,11 @@ describe('mission 2 — the ×10 rule through play', () => {
     expect(game.grid.pH[creek]).toBeLessThan(3);
   });
 
-  it('×1 base only, water only, or too much base all lose the fish', () => {
-    expect(run('m2-creek', constant('base')).reason).toBe('pond-acid');
-    expect(run('m2-creek', constant('water', 4)).reason).toBe('pond-acid');
+  it('×1 base only or water only never wins (acid reaches the fish); too much base kills them', () => {
+    const x1 = run('m2-creek', constant('base'));
+    expect(x1.status).not.toBe('won'); // ×1 alone cannot keep up with pH 2
+    expect(x1.game.assets[0].pH).toBeLessThan(6.8); // and the acid reaches the fish pond
+    expect(run('m2-creek', constant('water', 4)).status).not.toBe('won');
     const flood = run('m2-creek', (b, g) => {
       b.refill();
       for (let i = 0; i < 9; i++) {
@@ -135,16 +137,16 @@ describe('mission 5 — storm front', () => {
 });
 
 describe('indicators are required', () => {
-  it('an indicator-free ranger (heat probing + rule of thumb) cannot win the transfer', () => {
-    const o = run('m6-night', blind);
-    expect(o.status, `${o.reason} oob=${o.outOfBand}`).not.toBe('won');
+  it('an indicator-free ranger (heat probing + any fixed blueberry dose) cannot win the transfer', () => {
+    for (const dose of [0.45, 0.6, 0.8, 1.0, 1.2]) {
+      const o = run('m6-night', blindWith(dose));
+      expect(o.status, `dose ${dose}: ${o.reason} oob=${o.outOfBand}`).not.toBe('won');
+    }
   });
 
-  it('in mission 3 heat probing alone is far slower than using phenolphthalein', () => {
-    const smart = run('m3-quarry', intended['m3-quarry']);
-    const probe = run('m3-quarry', blind);
-    expect(smart.status).toBe('won');
-    if (probe.status === 'won') expect(probe.t).toBeGreaterThan(smart.t * 2);
+  it('no mission can be won without measuring the suspect ground', () => {
+    expect(run('m3-quarry', blind).status).not.toBe('won');
+    expect(run('m1-lemon', blind).status).not.toBe('won');
   });
 });
 

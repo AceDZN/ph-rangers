@@ -113,6 +113,28 @@ export class Bot {
     this.throw('mist', c);
   }
 
+  /** Mist every suspect cell not yet measured (nearest first), refilling mist at wagons. */
+  surveyAll(maxT = 120) {
+    const g = this.game.grid;
+    const t0 = this.game.t;
+    while (!this.done && this.game.unsurveyed() > 0 && this.game.t - t0 < maxT) {
+      const p = this.game.player;
+      let best = -1;
+      let bd = Infinity;
+      for (let c = 0; c < g.count; c++) {
+        if (!g.suspect[c] || this.known(c)) continue;
+        const [x, z] = g.center(c);
+        const d = Math.hypot(x - p.x, z - p.z);
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      if (best < 0) break;
+      this.measure(best);
+    }
+  }
+
   /**
    * Titrate a cell toward a target pH with pulses: estimate the amount still needed,
    * spray most of it, wait for it to land, read again. Uses ×10 for big amounts if allowed.

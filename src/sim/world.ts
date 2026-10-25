@@ -42,7 +42,7 @@ const SOIL: Record<Kind, { v0: number; beta: number }> = {
   [Kind.Soil]: { v0: 20, beta: 0.0015 },
   [Kind.Path]: { v0: 20, beta: 0.0015 },
   [Kind.Creek]: { v0: 20, beta: 0.0015 },
-  [Kind.Pond]: { v0: 400, beta: 0.05 },
+  [Kind.Pond]: { v0: 400, beta: 0.055 },
   [Kind.Blueberry]: { v0: 20, beta: 0.005 },
   [Kind.Hive]: { v0: 20, beta: 0.0015 },
   [Kind.School]: { v0: 20, beta: 0.001 },

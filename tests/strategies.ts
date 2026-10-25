@@ -19,6 +19,13 @@ export function run(missionId: string, plan: (b: Bot, g: Game) => void, untilT =
   const game = new Game(missionId);
   const bot = new Bot(game);
   plan(bot, game);
+  if ((plan as { finish?: boolean }).finish) {
+    // Sign-off: measure every suspect cell, fix anything the survey reveals.
+    for (let i = 0; i < 4 && !bot.done && game.t < untilT; i++) {
+      bot.surveyAll();
+      bot.maintain(problems(game), 30);
+    }
+  }
   while (!bot.done && game.t < untilT) bot.wait(0.5);
   const assets: Outcome['assets'] = {};
   for (const a of game.assets) assets[a.id] = { pH: +a.pH.toFixed(2), health: Math.round(a.health) };
@@ -49,13 +56,17 @@ export const intended: Record<string, (b: Bot, g: Game) => void> = {
   'm1-lemon': (b, g) => {
     b.throw('litmus', g.spill[0]);
     b.throw('mist', g.spill[0]);
-    for (let pass = 0; pass < 4 && !b.done; pass++) b.maintain(g.spill, 20);
+    for (let pass = 0; pass < 4 && !b.done; pass++) {
+      b.maintain(g.spill, 20);
+      b.surveyAll();
+    }
   },
   'm2-creek': (b, g) => {
     b.refill(); // ×10 concentrate at the wagon
     b.throw('mist', g.spill[0]);
     b.maintain(g.grid.creekCells, 70);
     b.maintain(g.spill.slice(4), 20);
+    b.surveyAll();
     b.maintain(problems(g), 60);
   },
   'm3-quarry': (b, g) => {
@@ -63,7 +74,10 @@ export const intended: Record<string, (b: Bot, g: Game) => void> = {
     b.throw('phenol', g.grid.idx(14, 7));
     const pink = g.spill;
     b.maintain([...pink, g.grid.idx(9, 6)], 45);
-    while (!b.done && g.t < 120) b.maintain(problems(g), 5);
+    while (!b.done && g.t < 120) {
+      b.surveyAll();
+      b.maintain(problems(g), 5);
+    }
   },
   'm4-blueberry': (b, g) => {
     const berries = cellsOf(g, Kind.Blueberry);
@@ -75,7 +89,10 @@ export const intended: Record<string, (b: Bot, g: Game) => void> = {
     const school = g.spill.slice(berries.length + 3);
     b.throw('mist', school[0]);
     b.maintain(school, 30);
-    while (!b.done && g.t < 200) b.maintain(problems(g), 5);
+    while (!b.done && g.t < 200) {
+      b.surveyAll();
+      b.maintain(problems(g), 5);
+    }
   },
   'm5-storm': (b, g) => {
     const hives = cellsOf(g, Kind.Hive);
@@ -83,16 +100,24 @@ export const intended: Record<string, (b: Bot, g: Game) => void> = {
     b.throw('canister', hives[Math.floor(hives.length / 2)]);
     b.throw('canister', school[Math.floor(school.length / 2)]);
     b.maintain(g.spill, 40);
-    while (!b.done && g.t < 160) b.maintain(problems(g), 5);
+    while (!b.done && g.t < 160) {
+      b.surveyAll();
+      b.maintain(problems(g), 5);
+    }
   },
   'm6-night': (b, g) => {
     // Triage: the acid next to the hives first, then the base slug in the creek, then the rest.
     b.maintain(g.spill.slice(4, 6), 30);
     b.maintain(g.grid.creekCells.slice(10, 30), 50);
     b.maintain(g.spill, 120);
-    while (!b.done && g.t < 220) b.maintain(problems(g), 5);
+    while (!b.done && g.t < 220) {
+      b.surveyAll();
+      b.maintain(problems(g), 5);
+    }
   },
 };
+
+for (const k of Object.keys(intended)) (intended[k] as { finish?: boolean }).finish = true;
 
 // ---------- wrong / constant strategies ----------
 
@@ -119,7 +144,7 @@ export function constant(valve: 'acid' | 'base' | 'water', seconds = 3) {
  * plus a learned rule of thumb: keep spraying while it fizzes, then add 8 small puffs.
  * Blueberries get a fixed dose of acid (the brief says they like acidic soil).
  */
-export const blind = (b: Bot, g: Game) => {
+export const blindWith = (berryDose: number) => (b: Bot, g: Game) => {
   const fizzAt = (from: number, c: number) =>
     g.fx.slice(from).some((e) => e.type === 'fizz' && g.grid.cellAt(e.x, e.z) === c);
   for (let pass = 0; pass < 3 && !b.done; pass++) {
@@ -132,7 +157,7 @@ export const blind = (b: Bot, g: Game) => {
       if (g.grid.band(c).hi < 7) {
         if (g.tank.acid < 0.02) b.refill();
         b.aimCell(c);
-        b.spray('acid', 1.2);
+        if (pass === 0) b.spray('acid', berryDose);
         continue;
       }
       for (const valve of ['base', 'acid'] as const) {
@@ -157,6 +182,8 @@ export const blind = (b: Bot, g: Game) => {
     }
   }
 };
+
+export const blind = blindWith(1.2);
 
 /** Bring every out-of-band spill cell to pH 7 (6.6–7.4), whatever lives there. */
 export const everythingTo7 = (b: Bot, g: Game) => {

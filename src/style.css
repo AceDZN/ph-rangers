@@ -582,8 +582,8 @@ bdi[dir='ltr'] {
 
 .gadget .cnt {
   position: absolute;
-  bottom: 22px;
-  right: 8px;
+  top: 4px;
+  right: 6px;
   font-size: 20px;
   font-weight: 800;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
@@ -996,7 +996,8 @@ body.reduced * {
   }
   .gadget .cnt {
     font-size: 15px;
-    bottom: 4px;
+    top: auto;
+    bottom: 2px;
   }
   .badge {
     font-size: 16px;

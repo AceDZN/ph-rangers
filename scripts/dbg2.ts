@@ -1,0 +1,11 @@
+import { Game } from '../src/sim/game';
+import { Bot } from '../tests/bot';
+import { intended } from '../tests/strategies';
+const id = process.argv[2] ?? 'm4-blueberry';
+const g = new Game(id); const b = new Bot(g);
+intended[id](b, g);
+console.log('after plan t', g.t.toFixed(1), 'unsurveyed', g.unsurveyed(), 'status', g.status, 'mist', g.gadgets.mist);
+const cells: string[] = [];
+for (let c = 0; c < g.grid.count; c++) if (g.grid.suspect[c] && !(g.grid.know[c] & 4)) cells.push(String(g.grid.center(c)));
+console.log(cells.join(' | '));
+const t0 = g.t; b.surveyAll(); console.log('survey took', (g.t - t0).toFixed(1), 'events mist', g.events.filter(e => e.action === 'mist').length, 'refills', g.stats.refills);

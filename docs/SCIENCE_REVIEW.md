@@ -235,3 +235,62 @@ npx tsx <scratch>/review/honest.ts             # kid-model timings
 npx tsx <scratch>/review/berrytoast.ts         # wrong-direction overshoot toast
 ```
 `<scratch>` = `/private/tmp/claude-501/-Users-acedzn-dev-AceDZN-exp-ph-rangers/e0a94e5b-bd16-4904-bfbd-e566ba99ccfe/scratchpad`. The bypass scripts import the repo's `src/sim` and `tests/bot.ts` read-only. Each strategy has a 90 s wall-clock guard. Line numbers are from the working tree on 2026-10-25; `src/render/world.ts` was being edited during the review (the grey wash line moved from about 759 to 795).
+
+---
+
+## Re-check (after dba41af)
+
+`npm test` passes: 41/41 (31 s). New scratch scripts sit in the same review folder: `bypass2.ts` uses only what the player can now see, `honest2.ts` is the kid model updated to the new visibility, and `verifypatch.ts` + `bypass2v.ts` / `honest2v.ts` prototype "measure to win" without touching `src/`.
+
+### P0 items: all fixed
+- **P0-1 (canister chemistry):** the m5 brief now reads "סידן פחמתי CaCO₃ – אבן גיר … מתמוססות לאט … לא מעלות את ה-pH מעל ~8.5" (`missions.ts:312`), and Mg(OH)₂ no longer appears anywhere. `WEAK_RATE` is now 0.003 mol/s, below the ×1 nozzle's 0.008, so "לאט" is true.
+- **P0-2 (overshoot direction):** `FxEvent.overshoot.dir` is computed from the cell's band (`game.ts`, `after > b.hi`), and both `main.ts` handleFx and the `fx.ts` ring use it.
+- **P0-3 (pH 7.4 wording):** now "קרוב לנייטרלי (מעט בסיסי)" (`missions.ts:290`).
+- **P0-4 (m2 brief):** the brief no longer contains numbers or "חלשה", and the student is told to measure. The hints and winText still give pH 2 / pH 3, which is fine because they come after measuring.
+- **P0-5 (phenolphthalein label):** "שקוף (pH מתחת ל-8.2)" in `game.ts:653`, and "שקוף: מתחת ל-8.2" on the `hud.ts:222` badge.
+- **Wording items also fixed:** מדללים, בריכוז, חוצצת, the green-range and purple lines, the m3 winText, and the salt line on the result screen.
+- **Remaining nit (P2):** the m6 `berries-base` fail text still says "…לא 7" (`missions.ts:406`), but the beds now start at 6.2. Suggest "לא קרוב ל-7".
+
+### HUD leakage: fixed, but heat probing still beats m6 (P1)
+
+What I confirmed in the code:
+- The grey wash and the "pH ?" badges are now keyed to `grid.suspect`.
+- The chime and overshoot FX fire only on cells measured with universal indicator.
+- Fizz fires only when the pH before the spray is below 4 or above 10; steam only below 4.5 or above 9.5.
+- The objective shows the measured, unmeasured and in-danger counts.
+- The bushes now show the asset's health instead of each cell's pH.
+
+The new blind oracle (`bypass2.ts`) uses only signals that are still visible:
+- the suspect grey patches, plus the creek, which is visible water;
+- fizz;
+- the asset health bars;
+- the rule "probe with one puff of base, then one of acid; keep spraying the one that fizzes until it stops, then N extra puffs";
+- a fixed acid dose on the blueberry bed, because the brief says the berries need acidic soil.
+
+| Mission | Strategy (0 indicators) | Result |
+|---|---|---|
+| **m6** | `tests/strategies.ts` `blind` (berry dose 1.2 s) | fails: `berries-acid` (bed ends at 3.07) |
+| **m6** | blind2, N = 8 or 16, berry dose 0.5 or 0.8 s | **won, 3★, 166 s, 0 indicators** (all 4 combinations) |
+| **m6** | blind2, N = 8–20, berry dose 1.2 s | fails: `berries-acid` (bed ends at 4.46) |
+| m3 | `tests/strategies.ts` `blind` | **won, 3★, 164 s, 0 indicators**. The new fertilizer cell (pH 3.8, below 4) fizzes, so heat probing finds it too. |
+| m3 | blind2 | stuck in "play" at 400 s |
+| m5 | blind2 + one canister on the hives and one on the school | won, 3★, 276 s (m5 is a scaffolded level, so this is acceptable) |
+| m5 | blind / blind2 without canisters | fails: `school-acid` at 61 s |
+
+**The m6 test (`missions.test.ts:138`) passes only because `blind` uses a 1.2 s acid dose on the berries.** Any dose between about 0.45 and 1.15 s wins: the blueberry window is about 9–23 puffs from pH 6.2. So the guarantee depends on that one constant.
+
+**Suggested fix: make measuring part of winning.** Require every `suspect` cell to carry `KNOW_UNIVERSAL` before the hold timer can start; the objective already shows "לא נמדדו: N". As a test, I patched `allContained` that way in scratch only (`verifypatch.ts`):
+- blind2 never wins m6; it is still in "play" at 400 s.
+- The kid model still wins m6 (211.7 s, 2★), m2 (163.8 s, 3★) and m4 (152.3 s, 2★).
+
+Also strengthen the m6 test: loop over berry doses (for example 0.3–1.2 s) and N values (8, 16), not a single constant.
+
+### Kid model after the balance changes (`honest2.ts`, visibility as above)
+
+| Mission | Result |
+|---|---|
+| m2 | **won, 163.8 s, 3★** (pond ends at **6.51**; margin 0.01) |
+| m4 | **won, 130 s, 2★** (berry health got down to **9**) |
+| m6 | **won, 211.7 s, 2★** |
+
+All three missions are now winnable by a measuring, non-omniscient player. m2 and m4 still finish very close to failure. If a human playtest confirms that, nudge them further: pond `beta` 0.06, or m4 berry decay 0.3.

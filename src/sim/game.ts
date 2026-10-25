@@ -547,7 +547,8 @@ export class Game {
         return;
       }
     }
-    if (this.t >= m.minTime && this.allContained() && this.assets.every((a) => a.pH >= a.lo && a.pH <= a.hi)) {
+    // A ranger signs off an area only after measuring it: every suspect cell must be misted.
+    if (this.t >= m.minTime && this.allSurveyed() && this.allContained() && this.assets.every((a) => a.pH >= a.lo && a.pH <= a.hi)) {
       this.holdT += dt;
       if (this.holdT >= WIN_HOLD) this.win();
     } else this.holdT = 0;
@@ -564,6 +565,18 @@ export class Game {
     const out: number[] = [];
     for (let c = 0; c < this.grid.count; c++) if (this.inArea(c) && !this.grid.inBand(c, this.mission.tol)) out.push(c);
     return out;
+  }
+
+  /** Suspect ground not yet measured with universal indicator. */
+  unsurveyed(): number {
+    const g = this.grid;
+    let n = 0;
+    for (let c = 0; c < g.count; c++) if (g.suspect[c] && !(g.know[c] & KNOW_UNIVERSAL)) n++;
+    return n;
+  }
+
+  allSurveyed(): boolean {
+    return this.unsurveyed() === 0;
   }
 
   allContained(): boolean {

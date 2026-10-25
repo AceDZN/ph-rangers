@@ -2,19 +2,18 @@
 
 2026-10-25. What was checked, how, and what was not. Automation can prove rules, solvability and that wrong strategies fail; it cannot show the game is fun or that students learn. No students have played it yet.
 
-## Automated (`npm test`, 41 tests, ~33 s)
+## Automated (`npm test`, 41 tests, ~50 s)
 
 - **pH model** (`tests/chem.test.ts`): 7 at equal acid/base; 0.001 mol/L → pH 3 / 11; ×10 per unit; round-trip with the soil buffer; clamp 0–14; dilution approaches 7 and never crosses it, ~10× volume per unit; pH 2 needs 8–10.5× the base of pH 3 with the buffer; reaction amounts; litmus / phenolphthalein / universal tables per Workbook; sprayer liquids pH 2/12 (×1) and 1/13 (×10).
 - **Grid** (`tests/world.test.ts`): creek chains connect and drain into the pond in both valleys; the acid/base/salt ledger is conserved through spreading, flooding, creek flow and reactions; water floods acid onto neighbours instead of neutralizing it; the weak-base canister is slow and never pushes pH above 8.5; a tap is exactly one puff; tank gauge pH; ×10 locked until the wagon in mission 2; phenolphthalein never reveals an acid's number; text state and learning events exist.
-- **Missions** (`tests/missions.test.ts`, played by a bot through the same inputs a player uses — stick, aim point, spray button, valve/strength keys, gadget throws — and that **only reads pH on ground it has measured with universal indicator**):
-  - every mission is won by its intended approach with ≥ 2★ (m1 21 s, m2 150 s, m3 62 s, m4 73 s, m5 160 s, m6 150 s game time);
+- **Missions** (`tests/missions.test.ts`, won only after every suspect cell is measured, played by a bot through the same inputs a player uses — stick, aim point, spray button, valve/strength keys, gadget throws — and that **only reads pH on ground it has measured with universal indicator**):
+  - every mission is won by its intended approach with ≥ 2★ (m1 21 s, m2 150 s, m3 60 s, m4 138 s, m5 160 s, m6 203 s game time);
   - m1: water only barely moves the lemon puddle and spreads it; overshoot to > 9.5 is shown and fixable with acid;
-  - m2: the same 3 s of ×1 base fixes the pH 3 puddle but moves the pH 2 creek < 0.5; ×1-only and water-only lose the fish to acid; flooding the creek with ×10 base loses them to base;
+  - m2: the same 3 s of ×1 base fixes the pH 3 puddle but moves the pH 2 creek < 0.5; ×1-only and water-only never win and let acid into the pond; flooding the creek with ×10 base kills the fish;
   - m3: phenolphthalein turns pink only on the lime, the acidic fertilizer stays colourless; acid on every pale patch acidifies the clean ones; base kills the olives; water only spreads the lime;
   - m4: everything-to-7 fails the blueberries; constant base/acid/water fail;
   - m5: doing nothing loses an asset to the acid rain;
-  - m6 (transfer): no hints; always base / acid / water / to-7 all fail; an **indicator-free "blind" ranger** (heat probing + a rule of thumb) does not win;
-  - m3: heat probing alone (no phenolphthalein) can win, but slower than 2× the indicator route — this is legitimate chemistry (neutralization releases heat) and is reported honestly rather than hidden.
+  - m6 (transfer): no hints; always base / acid / water / to-7 all fail; an **indicator-free "blind" ranger** (heat probing + rule of thumb, five blueberry doses) does not win; neither does it win m1 or m3.
 
 ## Independent science review
 
@@ -27,7 +26,9 @@
 - Balance: m4 blueberry decay halved, pond buffer raised (a careful "hold the line" plan in m2 can win), canister really slow, soils buffer differently (orchard more, school yard less), m6 blueberries start at 6.2 so a dose memorized in m4 overshoots, blueberry beds default to pH 5.
 - Wording: מדללים, "פי 10 בריכוז יוני H⁺", חוצץ (buffer), band colours, typo in the controls line.
 
-See the re-check section in the review for the reviewer's verification of these fixes.
+The reviewer's re-check (section at the end of the review) confirmed all five P0 fixes and the HUD changes, but found that heat probing plus a fixed blueberry dose could still win m6 without any indicator. Fixed after it: **a mission is won only once every suspect cell has been measured with universal indicator** (a ranger signs off only after measuring; the objective shows "לא נמדדו: N" and the grey wash marks them). Tests now try the blind strategy with five different blueberry doses on m6 and blind on m1/m3 — none wins. More mist charges were given (m3 3, m4 5, m6 5). Kid-model results from the re-check (before this last change): m2 won 164 s (pond 6.51), m4 won 130 s (berry health dipped to 9), m6 won 212 s — m2 and m4 were razor-thin, so the m4 blueberry decay was lowered again (0.3) and the pond buffer raised a little (0.055).
+
+Bot completion times with the survey rule (measured-only bot, not optimal routing): m1 21 s, m2 150 s, m3 60 s, m4 138 s, m5 160 s, m6 203 s ≈ 12 min total, above the 6–10 minute target; a human who knows the missions may be faster, a new player slower. Not measured with people.
 
 ## In the browser (built-in browser pane, dev server, 1280×720, DPR 2)
 

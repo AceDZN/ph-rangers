@@ -747,7 +747,7 @@ function updateRanger(dt: number) {
       const on = k === want;
       if (on && !a.isRunning()) a.reset().fadeIn(0.2).play();
       if (!on && a.isRunning() && a.getEffectiveWeight() > 0) a.fadeOut(0.2);
-      if (on && k === 'run') a.timeScale = Math.max(0.6, p.speed / 5.6);
+      if (on && k === 'run') a.timeScale = Math.max(0.6, p.speed / 6.6);
     }
     ranger.mixer.update(dt);
     // A little victory hop when ground is restored (and the celebrate clip if Tripo gave us one).

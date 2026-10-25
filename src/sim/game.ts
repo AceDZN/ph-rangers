@@ -333,7 +333,7 @@ export class Game {
       mx /= len;
       mz /= len;
     }
-    const top = (input.sprint ? 8.5 : 5.6) * (input.spray ? 0.7 : 1);
+    const top = (input.sprint ? 10 : 6.6) * (input.spray ? 0.75 : 1);
     const k = Math.min(1, dt * 12);
     p.vx += (mx * top - p.vx) * k;
     p.vz += (mz * top - p.vz) * k;

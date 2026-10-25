@@ -55,3 +55,14 @@ Captures through real input at the mockups' viewport: `docs/captures/` (see [doc
 - The kid-like model in the review lost m2, m4 and m6 before the balance fixes; see the re-check for results after them. Missions 2 and 6 may still feel hard for some 13-year-olds.
 - The Tripo house has two lavender fin artefacts on its roof.
 - Hebrew copy was written by the build agent and checked by the science reviewer, not by a native-speaking teacher.
+
+
+## Round 2 — "make it perfect" (2026-10-25, afternoon)
+
+The user asked for good 3D models and for the loop/UI/UX to be really fun. What changed and how it was checked:
+
+- **Models:** two more Tripo rounds (round 2: farmer + 9 props + new ranger clips; round 3: lemon crate, lemon, anemone, daisy). 410 credits from the existing balance; nothing bought. All 20 models load in the game (`render_game_to_text().tripoModels`, no console errors).
+- **Independent UX/fun critic** ([docs/UX_REVIEW.md](docs/UX_REVIEW.md)) played every mission through Playwright and ranked 17 issues. Fixed: invisible storm (rain curtain, veil, dimming, thunder), no pointer to measured-but-wrong patches (arrows + goal-first objective), ruler tag covering its own advice (tag under the bar, one-line label, next-puff tick), tutorial stuck if a step was skipped (skip-ahead), phone portrait/landscape overlaps and below-the-fold buttons, creek not reading as water (raised flowing ribbon, foam edges, stone banks, water ambience), props blocking the view (fade + clear-view menu shots), weak spray (solid jet, splash, lighter steam), too-fast overshoot (nozzle ramp, next-puff tick), toasts over the aim point, misleading timer, combo surviving overshoots, cheap props (Tripo crate/lemons/flowers, soft decals, finer salt), low-tank warning, asset rows with no reason, fail card showing success chips (now shows the lost asset + retry with hint), night glow flooding the screen, pause key legend, birds returning on restore.
+- **Not fixed / partial:** missions 2, 5 and 6 still take the bot 2.5–3.5 minutes each (≈13 min for all six with an unhurried bot that never sprints); the mission-6 blueberries start out of band, so their health falls from the first second; the score scale differs a lot between missions.
+- **Verified in the browser pane** (1440×810 and 375×812): mission 1 won in 23.5 s with blooms, combo ×6 and the result card; storm visuals mid-rain in mission 5; creek and ×10 unlock in mission 2; night mission with the new glow rule; title, brief and result camera shots; portrait layout. Captures re-taken (`docs/captures/`). 42/42 tests pass; production build OK.
+- **Not verified:** pointer-lock mouse look by a human (automation runs in test mode with the cursor aiming), touch on a real device, the music and new sounds by ear, frame rate on low-end hardware (bloom turns itself off below ~38 fps), and whether any of this is fun for 13-year-olds.

@@ -38,6 +38,7 @@ Source of truth: Workbook, grade 8 science, chapter 10 (חומצות, בסיסי
 - **Bands** (fish 6.5–8.5, blueberries 4.5–5.5, bees / school 6–8.5) are game targets inspired by common guidance, not Workbook content.
 - **Sign-off needs measurement:** a mission ends only when every suspect patch has been measured with universal indicator and is in its band — heat and guesses are not enough.
 - **What the HUD shows is only what the ranger could know:** the grey "unknown" wash and "pH ?" markers cover reported/sprayed ground, not the true out-of-band cells; the "in band" chime and "too much" toast only fire on ground measured with universal indicator; the objective counts measured cells and unmeasured suspect ground. Asset health bars (and fish, bees, yellowing blueberries) are the visible consequences.
+- **The pH ruler** shows, for the aimed ground, the target band and exactly what the indicators used there tell you: litmus shades 0–4.5, 4.5–8.2 or 8.2–14; phenolphthalein shades below 8.2, 8.2–10 or above 10 (both are intersected when both were used); universal indicator puts a marker at the number (Workbook: accurate to about one unit). A dashed tick shows where one more puff would put the pH — near neutral students can see one puff move it a lot, far from neutral (pH 2) barely at all: the ×10 rule as a live preview.
 - Colour is never the only signal: every reading pairs a colour with a number or an icon (drop = acid, bubbles = base, leaf = neutral) and Hebrew text.
 
 ## Learning events

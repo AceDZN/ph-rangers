@@ -5,6 +5,7 @@ import {
   netForPH,
   phenolphthalein,
   phFromNet,
+  phFromNetNear,
   react,
   sprayPH,
   universal,
@@ -30,6 +31,15 @@ describe('pH from amounts (strong acid / strong base, log10 rule)', () => {
   it('round-trips through netForPH, also with a soil buffer', () => {
     for (const p of [0.5, 2, 3.3, 4.5, 5, 6.2, 7, 7.9, 8.5, 9.4, 11, 13.5]) {
       expect(phFromNet(netForPH(p, 20, 0.0015), 20, 0.0015)).toBeCloseTo(p, 4);
+    }
+  });
+
+  it('the warm-started solver agrees with bisection', () => {
+    for (const p of [0.2, 1.5, 2.9, 4.01, 5.5, 6.99, 7.2, 8.9, 9.3, 12.7]) {
+      for (const guess of [7, 0.5, 13.5, p + 0.3]) {
+        const net = netForPH(p, 20, 0.0015);
+        expect(phFromNetNear(net, 20, 0.0015, guess)).toBeCloseTo(phFromNet(net, 20, 0.0015), 5);
+      }
     }
   });
 

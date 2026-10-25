@@ -6,7 +6,12 @@ import './style.css';
 import * as THREE from 'three';
 import { Game, Input, NO_INPUT } from './sim/game';
 import { MISSIONS } from './sim/missions';
+import { universalRGB } from './sim/chem';
 import { terrainHeight } from './sim/layout';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Audio } from './render/audio';
 import { Fx } from './render/fx';
 import { Hud } from './render/hud';
@@ -47,6 +52,29 @@ renderer.toneMappingExposure = 1.08;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 800);
+// Soft bloom on the brightest things (jet, sparkles, night glow). Dropped automatically if slow.
+let composer: EffectComposer | null = null;
+let renderPass: RenderPass | null = null;
+let bloom: UnrealBloomPass | null = null;
+let bloomOn = new URLSearchParams(location.search).get('bloom') !== '0';
+let slowFrames = 0;
+function setupComposer(scene: THREE.Scene, night: boolean) {
+  if (!bloomOn) return;
+  if (!composer) {
+    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+    composer = new EffectComposer(renderer, rt);
+    renderPass = new RenderPass(scene, camera);
+    bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.35, 0.45, 0.86);
+    composer.addPass(renderPass);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    composer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    composer.setSize(window.innerWidth, window.innerHeight);
+  }
+  renderPass!.scene = scene;
+  bloom!.strength = night ? 0.45 : 0.3;
+  bloom!.threshold = night ? 0.82 : 0.88;
+}
 const models = new Models();
 const audio = new Audio();
 const hud = new Hud();
@@ -57,13 +85,23 @@ let ranger: RangerModel | null = null;
 let headlamp: THREE.PointLight | null = null;
 let mode: Mode = 'loading';
 const progress = store.get<Record<string, number>>('phr-progress', {});
-const settings = store.get('phr-settings', { reduced: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false, muted: false });
+const best = store.get<Record<string, number>>('phr-best', {});
+const settings = {
+  reduced: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  muted: false,
+  music: true,
+  ...store.get<Partial<{ reduced: boolean; muted: boolean; music: boolean }>>('phr-settings', {}),
+};
 
 // Camera / aim state.
 let camYaw = 0;
 let camPitch = 0.45; // 0 = look far, 1 = look near
 let shake = 0;
 let pointerLocked = false;
+/** Pointer lock refused or unavailable: the cursor aims and right-drag turns the camera. */
+let freeMode = false;
+const testMode = new URLSearchParams(location.search).get('autopause') === '0';
+const finePointer = window.matchMedia?.('(pointer: fine)').matches ?? true;
 let mouseFree = { x: 0, y: 0, active: false };
 const keys = new Set<string>();
 let mouseDown = false;
@@ -74,7 +112,14 @@ function applySettings() {
   audio.setMuted(settings.muted);
   if (fx) fx.reduced = settings.reduced;
   for (const id of ['opt-motion', 'opt-motion2']) $<HTMLInputElement>(id).checked = settings.reduced;
-  for (const id of ['opt-mute', 'opt-mute2']) $<HTMLInputElement>(id).checked = settings.muted;
+  $<HTMLInputElement>('opt-music').addEventListener('change', (e) => {
+  settings.music = (e.target as HTMLInputElement).checked;
+  audio.unlock();
+  applySettings();
+});
+for (const id of ['opt-mute', 'opt-mute2']) $<HTMLInputElement>(id).checked = settings.muted;
+  $<HTMLInputElement>('opt-music').checked = settings.music;
+  audio.setMusic(settings.music);
   store.set('phr-settings', settings);
 }
 
@@ -86,6 +131,7 @@ function buildWorld() {
   if (needNew) {
     world?.dispose();
     world = new World(m.layout, !!m.night, models);
+    setupComposer(world.scene, !!m.night);
     fx = new Fx(world.scene, m.layout);
     fx.reduced = settings.reduced;
     ranger = models.ranger();
@@ -251,27 +297,52 @@ document.addEventListener('visibilitychange', () => {
   if (autoPause && document.hidden && mode === 'play') setMode('paused');
 });
 
+function wantsLock() {
+  return finePointer && !testMode && !touch.used && !freeMode;
+}
+
+function requestLock() {
+  if (!wantsLock() || pointerLocked) return;
+  try {
+    const r = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+    if (r && typeof r.catch === 'function') r.catch(() => (freeMode = true));
+  } catch {
+    freeMode = true;
+  }
+}
+
 canvas.addEventListener('mousedown', (e) => {
   audio.unlock();
   if (mode !== 'play') return;
+  if (wantsLock() && !pointerLocked) {
+    requestLock();
+    return;
+  }
   if (e.button === 0) mouseDown = true;
-  if (!pointerLocked && e.button === 2) canvas.requestPointerLock?.();
+});
+$('lockhint').addEventListener('click', () => {
+  audio.unlock();
+  requestLock();
 });
 window.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseDown = false;
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-canvas.addEventListener('dblclick', () => {
-  if (mode === 'play' && !pointerLocked) canvas.requestPointerLock?.();
-});
 document.addEventListener('pointerlockchange', () => {
+  const was = pointerLocked;
   pointerLocked = document.pointerLockElement === canvas;
+  // Esc releases the mouse: treat it as pause, like any 3D action game.
+  if (was && !pointerLocked && mode === 'play') setMode('paused');
+});
+document.addEventListener('pointerlockerror', () => {
+  freeMode = true;
 });
 window.addEventListener('mousemove', (e) => {
-  if (pointerLocked) {
+  if (pointerLocked || (freeMode && e.buttons & 2)) {
     camYaw -= e.movementX * 0.0026;
     camPitch = Math.min(1, Math.max(0, camPitch + e.movementY * 0.0022));
-  } else {
+  }
+  if (!pointerLocked) {
     const r = canvas.getBoundingClientRect();
     mouseFree = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1, active: true };
   }
@@ -361,7 +432,10 @@ document.querySelectorAll<HTMLButtonElement>('.gadget').forEach((b) =>
 $('strength').addEventListener('click', () => game.toggleStrength());
 $('btn-hint').addEventListener('click', () => game.useHint());
 $('btn-pause').addEventListener('click', () => setMode('paused'));
-$('presume').addEventListener('click', () => setMode('play'));
+$('presume').addEventListener('click', () => {
+  setMode('play');
+  requestLock();
+});
 $('prestart').addEventListener('click', () => {
   game.restart();
   buildWorld();
@@ -386,6 +460,11 @@ for (const id of ['opt-motion', 'opt-motion2'])
     settings.reduced = (e.target as HTMLInputElement).checked;
     applySettings();
   });
+$<HTMLInputElement>('opt-music').addEventListener('change', (e) => {
+  settings.music = (e.target as HTMLInputElement).checked;
+  audio.unlock();
+  applySettings();
+});
 for (const id of ['opt-mute', 'opt-mute2'])
   $<HTMLInputElement>(id).addEventListener('change', (e) => {
     settings.muted = (e.target as HTMLInputElement).checked;
@@ -396,6 +475,7 @@ for (const id of ['opt-mute', 'opt-mute2'])
 
 function setMode(m: Mode) {
   mode = m;
+  audio.musicMood = m === 'play' ? (game.mission.night ? 'night' : 'day') : 'menu';
   $('title').hidden = m !== 'title';
   $('brief').hidden = m !== 'brief';
   $('result').hidden = m !== 'result';
@@ -406,6 +486,7 @@ function setMode(m: Mode) {
   if (m !== 'play') {
     mouseDown = false;
     keys.clear();
+    $('lockhint').hidden = true;
     if (document.pointerLockElement) document.exitPointerLock?.();
   }
   if (m === 'title') renderTitle();
@@ -416,6 +497,20 @@ function unlocked(i: number) {
   return i === 0 || progress[MISSIONS[i - 1].id] > 0 || new URLSearchParams(location.search).has('all');
 }
 
+const MISSION_ICON: Record<string, string> = {
+  'm1-lemon': '🍋',
+  'm2-creek': '🐟',
+  'm3-quarry': '🫒',
+  'm4-blueberry': '🫐',
+  'm5-storm': '⛈️',
+  'm6-night': '🌙',
+};
+
+function nextMissionIndex() {
+  const i = MISSIONS.findIndex((m) => !(progress[m.id] > 0));
+  return i < 0 ? 0 : i;
+}
+
 function renderTitle() {
   const list = $('missionlist');
   list.innerHTML = '';
@@ -423,8 +518,10 @@ function renderTitle() {
     const b = document.createElement('button');
     b.type = 'button';
     const stars = progress[m.id] ?? 0;
-    b.innerHTML = `<span class="st">${'★'.repeat(stars)}</span><b>${m.num}. ${m.title}</b><span>${m.tagline}</span>`;
-    b.disabled = !unlocked(i);
+    const open = unlocked(i);
+    const starHtml = [1, 2, 3].map((k) => `<span class="${k <= stars ? '' : 'off'}">★</span>`).join('');
+    b.innerHTML = `<span class="mi">${MISSION_ICON[m.id] ?? '•'}</span><span class="mt"><b>${m.num}. ${m.title}</b><br /><span>${m.tagline}</span></span><span class="st">${open ? starHtml : '<span class="lock">🔒</span>'}</span>`;
+    b.disabled = !open;
     b.addEventListener('click', () => {
       audio.unlock();
       game.load(m.id);
@@ -435,8 +532,24 @@ function renderTitle() {
   });
 }
 
+$('playbtn').addEventListener('click', () => {
+  audio.unlock();
+  game.load(MISSIONS[nextMissionIndex()].id);
+  buildWorld();
+  setMode('brief');
+});
+
 function renderBrief() {
   const m = game.mission;
+  $('bicon').textContent = MISSION_ICON[m.id] ?? '';
+  const L = m.loadout;
+  const tools: string[] = [];
+  if (L.litmus) tools.push(`🟥🟦 לקמוס ×${L.litmus}`);
+  if (L.phenol) tools.push(`🩷 פנולפתלאין ×${L.phenol}`);
+  if (L.mist) tools.push(`🌈 ערפל אוניברסלי ×${L.mist} (נטען לבד)`);
+  if (L.canister) tools.push(`⚪ נוגד חומצה ×${L.canister}`);
+  if (m.strength10 !== 'no') tools.push(m.strength10 === 'yes' ? '×10 תרכיז' : '×10 בעגלה');
+  $('btools').innerHTML = tools.map((t) => `<span>${t}</span>`).join('');
   $('bkicker').textContent = m.noHints ? `משימה ${m.num} · משימת מבחן` : `משימה ${m.num}`;
   $('btitle').textContent = m.title;
   $('btag').textContent = m.tagline;
@@ -447,6 +560,15 @@ function renderBrief() {
 function startPlay() {
   audio.unlock();
   setMode('play');
+  requestLock();
+  const b = $('banner');
+  $('bannerk').textContent = `משימה ${game.mission.num}`;
+  $('bannert').textContent = game.mission.title;
+  b.hidden = true;
+  void b.offsetWidth;
+  b.hidden = false;
+  setTimeout(() => (b.hidden = true), 2700);
+  audio.go();
 }
 
 function showResult() {
@@ -454,6 +576,29 @@ function showResult() {
   const m = game.mission;
   $('rtitle').textContent = won ? 'העמק נושם שוב!' : 'אוי, לא הפעם';
   $('rstars').innerHTML = won ? [1, 2, 3].map((i) => `<span class="${i <= game.stars ? '' : 'off'}">★</span>`).join('') : '';
+  // Before → after for each spill patch, coloured with the universal indicator.
+  const css = (v: number) => {
+    const [r, g2, b] = universalRGB(v);
+    return `rgb(${Math.round(r * 255)},${Math.round(g2 * 255)},${Math.round(b * 255)})`;
+  };
+  const seenPairs = new Set<string>();
+  $('rchanges').innerHTML = game.spill
+    .map((c, i) => {
+      const a = game.startPH[i];
+      const b = game.grid.pH[c];
+      const key = `${a.toFixed(1)}-${b.toFixed(1)}`;
+      if (seenPairs.has(key)) return '';
+      seenPairs.add(key);
+      return `<span style="background:linear-gradient(90deg,${css(a)},${css(b)})">pH ${a.toFixed(1)} → ${b.toFixed(1)}</span>`;
+    })
+    .filter(Boolean)
+    .slice(0, 6)
+    .join('');
+  $('rscore').textContent = won ? `★ ${game.score.toLocaleString('en-US')}${game.bestCombo >= 3 ? `  ·  רצף ×${game.bestCombo}` : ''}` : '';
+  if (won) {
+    best[m.id] = Math.max(best[m.id] ?? 0, game.score);
+    store.set('phr-best', best);
+  }
   $('rtext').textContent = won ? m.winText : (m.failText[game.failReason] ?? 'אחד האזורים המוגנים יצא מהטווח שלו.');
   const firstLine = won
     ? 'כל פעם שחומצה ובסיס נפגשו נוצרו מלח ומים, והשתחרר חום (האדים).'
@@ -480,11 +625,18 @@ function handleFx() {
     if (e.type === 'fizz') audio.fizz(e.amount);
     else if (e.type === 'overshoot') {
       audio.boing();
+      hud.floater(camera, window.innerWidth, window.innerHeight, e.x, terrainHeight(game.mission.layout, e.x, e.z) + 1.4, e.z, 'BOING!', 'warn');
       hud.toast(e.dir === 'base' ? 'יותר מדי בסיס – בסיסי מדי כאן!' : 'יותר מדי חומצה – חומצי מדי כאן!', e.dir === 'base' ? 'pinkish' : 'bad');
       if (!settings.reduced) shake = 0.35;
     } else if (e.type === 'inband') {
       audio.chime();
-      hud.toast('בטווח! ✓', 'good');
+    } else if (e.type === 'restored') {
+      audio.restored(e.combo);
+      hud.bumpScore();
+      const y = terrainHeight(game.mission.layout, e.x, e.z) + 1.2;
+      hud.floater(camera, window.innerWidth, window.innerHeight, e.x, y, e.z, e.combo >= 2 ? `+${e.points} ×${e.combo}` : `+${e.points}`, e.combo >= 3 ? 'big' : '');
+      fx?.restoredBurst(e.x, e.z);
+      if (ranger) celebrateT = 1.2;
     } else if (e.type === 'throw') audio.throwSfx();
     else if (e.type === 'gadget') audio.pop(e.kind);
     else if (e.type === 'refill') {
@@ -506,6 +658,9 @@ function handleFx() {
 }
 
 let animT = 0;
+let celebrateT = 0;
+let stuckT = 0;
+let lastScore = 0;
 let aimW = 0;
 const qA = new THREE.Quaternion();
 const qB = new THREE.Quaternion();
@@ -545,6 +700,11 @@ function updateRanger(dt: number) {
       if (on && k === 'run') a.timeScale = Math.max(0.6, p.speed / 5.6);
     }
     ranger.mixer.update(dt);
+    // A little victory hop when ground is restored (and the celebrate clip if Tripo gave us one).
+    if (celebrateT > 0) {
+      celebrateT -= dt;
+      if (!p.spraying && !moving) ranger.root.position.y += Math.max(0, Math.sin((1.2 - celebrateT) * Math.PI * 2.5)) * 0.35;
+    }
     if (!(want in ranger.clips) && ranger.clips.idle && !ranger.clips.idle.isRunning()) ranger.clips.idle.play();
     // Procedural aim pose: both arms reach forward toward the spray target.
     const B = ranger.root.userData.bones as Record<string, THREE.Object3D | null>;
@@ -554,7 +714,7 @@ function updateRanger(dt: number) {
     const right = new THREE.Vector3(-Math.cos(p.yaw), 0, Math.sin(p.yaw));
     const ax = game.aim.x - p.x;
     const az = game.aim.z - p.z;
-    const pitch = -Math.atan2(1.2, Math.max(2, Math.hypot(ax, az))) + 0.25;
+    const pitch = -Math.atan2(1.1, Math.max(2, Math.hypot(ax, az))) + 0.04;
     const dir = fwd.clone().multiplyScalar(Math.cos(pitch)).add(new THREE.Vector3(0, Math.sin(pitch), 0));
     if (aimW > 0.01 && B) {
       aimBone(B.rArm, B.rFore, dir.clone().add(right.clone().multiplyScalar(-0.15)), aimW);
@@ -581,8 +741,34 @@ function updateRanger(dt: number) {
   }
 }
 
+let stepT = 0;
+function footsteps(dt: number) {
+  const p = game.player;
+  if (p.speed < 3 || mode !== 'play') return;
+  stepT -= dt * (p.speed / 5.6);
+  if (stepT <= 0) {
+    stepT = 0.32;
+    fx?.dust(p.x, p.z, p.speed > 7);
+  }
+}
+
 function updateCamera(dt: number) {
   const p = game.player;
+  if (mode === 'title' || mode === 'brief' || mode === 'result' || mode === 'loading') {
+    // Slow cinematic orbit around the ranger while menus are up.
+    const a = animT * 0.12 + (mode === 'result' ? 1.5 : 0);
+    const r = mode === 'title' ? 8.5 : 6.5;
+    const tx = p.x + Math.sin(a) * r;
+    const tz = p.z + Math.cos(a) * r;
+    const L0 = game.mission.layout;
+    const ty = Math.max(terrainHeight(L0, tx, tz) + 1.4, p.y + (mode === 'title' ? 2.6 : 2));
+    camera.position.lerp(tmpV.set(tx, ty, tz), Math.min(1, dt * 3));
+    // Frame the ranger left of centre so the menus on the right stay clear.
+    const lx = p.x + Math.cos(a) * 1.8;
+    const lz = p.z - Math.sin(a) * 1.8;
+    camera.lookAt(lx, p.y + 1.1, lz);
+    return;
+  }
   const { fx: f, fz, rx, rz } = cameraBasis();
   // Over-the-shoulder chase camera like the mockups: ranger lower-left, valley ahead.
   const dist = 4.8 + camPitch * 0.8;
@@ -592,6 +778,13 @@ function updateCamera(dt: number) {
   const L = game.mission.layout;
   target.y = Math.max(target.y, terrainHeight(L, target.x, target.z) + 1.2);
   camera.position.lerp(target, Math.min(1, dt * 10));
+  // Sprint widens the view a touch; spraying pulls it in for focus.
+  const fovBase = window.innerWidth < window.innerHeight ? 70 : 55;
+  const fovWant = fovBase + (p.speed > 7 ? 6 : 0) - (p.spraying ? 3 : 0);
+  if (!settings.reduced && Math.abs(camera.fov - fovWant) > 0.05) {
+    camera.fov += (fovWant - camera.fov) * Math.min(1, dt * 5);
+    camera.updateProjectionMatrix();
+  }
   const down = 0.04 + camPitch * 0.42;
   tmpV.set(camera.position.x + f * Math.cos(down) * 10, camera.position.y - Math.sin(down) * 10, camera.position.z + fz * Math.cos(down) * 10);
   if (shake > 0) {
@@ -624,12 +817,19 @@ function render(dt: number) {
     if (keys.has('PageUp')) camPitch = Math.max(0, camPitch - dt);
     if (keys.has('PageDown')) camPitch = Math.min(1, camPitch + dt);
     // Free-mouse mode: pushing the cursor toward a screen edge turns the camera.
-    if (!pointerLocked && mouseFree.active && !manual && !touch.used) {
+    if (freeMode && !pointerLocked && mouseFree.active && !manual && !touch.used) {
       const ex = Math.abs(mouseFree.x);
-      if (ex > 0.72) camYaw -= Math.sign(mouseFree.x) * (ex - 0.72) * 6 * dt;
+      if (ex > 0.85) camYaw -= Math.sign(mouseFree.x) * (ex - 0.85) * 6 * dt;
     }
+    $('lockhint').hidden = !(wantsLock() && !pointerLocked);
+    if (game.score !== lastScore) {
+      lastScore = game.score;
+      stuckT = 0;
+    } else stuckT += dt;
+    $('btn-hint').classList.toggle('nudge', stuckT > 30 && !game.mission.noHints && !game.hint);
   }
   updateRanger(dt);
+  footsteps(dt);
   updateCamera(dt);
   world.update(game, animT, dt);
   world.followSun(game.player.x, game.player.y, game.player.z);
@@ -653,7 +853,8 @@ function render(dt: number) {
       if (mode === 'play') audio.bird();
     }
   }
-  renderer.render(world.scene, camera);
+  if (composer && bloomOn) composer.render(dt);
+  else renderer.render(world.scene, camera);
 }
 
 let last = performance.now();
@@ -669,6 +870,10 @@ function frame(now: number) {
   fps.t += dt;
   if (fps.t >= 1) {
     fps.value = fps.frames / fps.t;
+    // Drop bloom if the machine cannot keep up.
+    if (bloomOn && mode === 'play' && fps.value < 38) {
+      if (++slowFrames >= 3) bloomOn = false;
+    } else slowFrames = 0;
     fps.frames = 0;
     fps.t = 0;
   }
@@ -687,6 +892,7 @@ function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
+  composer?.setSize(w, h);
   camera.aspect = w / h;
   camera.fov = w < h ? 70 : 55;
   camera.updateProjectionMatrix();

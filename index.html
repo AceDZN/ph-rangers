@@ -22,7 +22,22 @@
         </div>
         <div id="tutorial" class="callout" hidden></div>
         <div id="toast" class="toast" hidden></div>
+        <div id="vignette"></div>
+        <div id="banner" class="banner" hidden><small id="bannerk"></small><b id="bannert"></b></div>
+        <div id="arrows"></div>
+        <div id="floaters"></div>
         <div id="reticle"><i></i><span id="readout"></span></div>
+        <div id="scorebox" class="panel score"><span class="sc-star" aria-hidden="true">★</span><bdi id="score" dir="ltr">0</bdi><span id="combo" class="combo" hidden></span></div>
+        <div id="ruler" class="ruler" aria-label="סולם pH">
+          <div class="rtitle" id="rulerlabel">כוונו לקרקע ומדדו</div>
+          <div class="rbar">
+            <i class="rband" id="rband"></i>
+            <i class="rrange" id="rrange"></i>
+            <i class="rmark" id="rmark"><b id="rval"></b></i>
+          </div>
+          <div class="rticks" dir="ltr"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span></div>
+          <div class="rends"><span>← חומצי</span><span>נייטרלי</span><span>בסיסי →</span></div>
+        </div>
         <div class="br">
           <div class="tank panel" id="tank">
             <div class="tank-ph"><small>pH</small><bdi id="tankph" dir="ltr">12</bdi></div>
@@ -52,35 +67,48 @@
         </div>
       </div>
 
-      <div id="title" class="screen">
-        <div class="card big">
+      <div id="title" class="screen side">
+        <div class="logo">
+          <div class="drop" aria-hidden="true"></div>
           <h1>סיירת ה-pH</h1>
           <p class="sub">רוצו, מדדו, רססו – והחזירו את העמק לחיים.</p>
+          <button type="button" class="playbig" id="playbtn">שחקו ▶</button>
+        </div>
+        <div class="card side-card">
+          <h3>משימות</h3>
           <div id="missionlist" class="missions"></div>
-          <div class="controls">
-            <p><b>מחשב:</b> WASD תנועה · עכבר כיוון (לחצו על המסך לנעילה) · לחיצה/רווח ריסוס (לחיצה קצרה = ריסוס קטן) · 1/2/3 שסתום · X חוזק · R לקמוס · F פנולפתלאין · G ערפל אוניברסלי · T נוגד חומצה · Shift ריצה · H רמז · Esc השהיה</p>
+          <details class="controls">
+            <summary>שליטה</summary>
+            <p><b>מחשב:</b> WASD תנועה · עכבר מסובב (לחצו על המסך) · לחיצה/רווח ריסוס (לחיצה קצרה = פרץ קטן) · 1/2/3 או גלגלת שסתום · X חוזק · R לקמוס · F פנולפתלאין · G ערפל אוניברסלי · T נוגד חומצה · Shift ריצה · H רמז · Esc הפסקה</p>
             <p><b>מגע:</b> ג׳ויסטיק משמאל · גררו בצד ימין לכיוון · כפתור ריסוס</p>
+          </details>
+          <div class="opts">
+            <label class="opt"><input type="checkbox" id="opt-motion" /> הפחתת תנועה</label>
+            <label class="opt"><input type="checkbox" id="opt-mute" /> השתקה</label>
+            <label class="opt"><input type="checkbox" id="opt-music" checked /> מוזיקה</label>
           </div>
-          <label class="opt"><input type="checkbox" id="opt-motion" /> הפחתת תנועה</label>
-          <label class="opt"><input type="checkbox" id="opt-mute" /> השתקה</label>
         </div>
       </div>
 
-      <div id="brief" class="screen" hidden>
-        <div class="card">
+      <div id="brief" class="screen side" hidden>
+        <div class="card side-card brief-card">
+          <div class="bicon" id="bicon" aria-hidden="true"></div>
           <div class="kicker" id="bkicker"></div>
           <h2 id="btitle"></h2>
           <p class="tag" id="btag"></p>
           <ul id="blist"></ul>
           <div id="bassets" class="chips"></div>
-          <button type="button" class="primary" id="bgo">יוצאים לדרך ▶</button>
+          <div id="btools" class="tools"></div>
+          <button type="button" class="primary big" id="bgo">יוצאים לדרך ▶</button>
         </div>
       </div>
 
-      <div id="result" class="screen" hidden>
-        <div class="card">
+      <div id="result" class="screen side" hidden>
+        <div class="card side-card result-card">
           <h2 id="rtitle"></h2>
           <div class="stars" id="rstars"></div>
+          <div class="rscore" id="rscore"></div>
+          <div class="rchanges" id="rchanges"></div>
           <p id="rtext"></p>
           <p class="explain" id="rexplain"></p>
           <div class="rstats" id="rstats"></div>
@@ -106,6 +134,7 @@
         </div>
       </div>
 
+      <div id="lockhint" class="lockhint" hidden><div><b>לחצו כדי לשחק</b><span>העכבר מסובב את המצלמה · לחיצה = ריסוס · Esc = הפסקה</span></div></div>
       <div id="loading" class="screen"><div class="card"><p>טוענים את העמק…</p></div></div>
       <div id="glerror" class="screen" hidden><div class="card"><p>הגרפיקה (WebGL) נעצרה. לחצו לטעינה מחדש.</p><button type="button" class="primary" onclick="location.reload()">טעינה מחדש</button></div></div>
     </div>

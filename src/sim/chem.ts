@@ -54,6 +54,29 @@ export function phFromNet(net: number, volume: number, beta = 0): number {
   return (lo + hi) / 2;
 }
 
+/**
+ * Same as phFromNet but starts from a previous answer and uses Newton steps (falls back to
+ * bisection if they misbehave). Much faster when a cell's pH changes a little each step.
+ */
+export function phFromNetNear(net: number, volume: number, beta: number, guess: number): number {
+  if (volume <= 0) return NEUTRAL;
+  if (net >= netForPH(PH_MIN, volume, beta)) return PH_MIN;
+  if (net <= netForPH(PH_MAX, volume, beta)) return PH_MAX;
+  let p = guess >= PH_MIN && guess <= PH_MAX ? guess : NEUTRAL;
+  for (let i = 0; i < 16; i++) {
+    const h = Math.pow(10, -p);
+    const oh = Math.pow(10, p - 14);
+    const f = volume * (h - oh) + bufferTerm(p, beta) - net;
+    const inBuf = p > BUFFER_LO && p < BUFFER_HI ? beta : 0;
+    const d = -Math.LN10 * volume * (h + oh) - inBuf;
+    const next = p - f / d;
+    if (!Number.isFinite(next) || next < PH_MIN || next > PH_MAX) return phFromNet(net, volume, beta);
+    if (Math.abs(next - p) < 1e-7) return next;
+    p = next;
+  }
+  return phFromNet(net, volume, beta);
+}
+
 /** H⁺ concentration ratio between two pH values: every unit is ×10. */
 export function hydrogenRatio(pHa: number, pHb: number): number {
   return Math.pow(10, pHb - pHa);

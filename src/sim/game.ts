@@ -72,6 +72,7 @@ export type FxEvent =
   | { type: 'fizz'; x: number; z: number; amount: number }
   | { type: 'overshoot'; x: number; z: number; pH: number; dir: 'acid' | 'base' }
   | { type: 'inband'; x: number; z: number }
+  | { type: 'restored'; x: number; z: number; points: number; combo: number }
   | { type: 'gadget'; kind: Gadget; x: number; z: number }
   | { type: 'throw'; kind: Gadget }
   | { type: 'refill' }
@@ -100,6 +101,11 @@ export const SPRAY_RANGE = 15;
 export const GADGET_RADIUS = 7.5;
 const GRID_DT = 0.05;
 const WIN_HOLD = 1.5;
+/** Seconds for one universal-indicator mist charge to refill on its own. */
+export const MIST_RECHARGE = 9;
+const COMBO_WINDOW = 5;
+/** Seconds a cell must stay clearly out of band before its plants visibly wilt. */
+const WILT_TIME = 4;
 
 export class Game {
   mission!: MissionDef;
@@ -119,6 +125,17 @@ export class Game {
   spill: number[] = [];
   decoys: number[] = [];
   stats = { chem: 0, water: 0, puffs: 0, refills: 0 };
+  /** Points for ground brought back into its band (measured cells only, once each). */
+  score = 0;
+  combo = 0;
+  bestCombo = 0;
+  private lastRestore = -10;
+  private restored = new Set<number>();
+  /** 0..1 progress of the next mist charge. */
+  mistCharge = 0;
+  /** Each spill patch's pH at the start, for the results card. */
+  startPH: number[] = [];
+  private wilt = new Float32Array(0);
   tutorialStep = 0;
   hint = '';
   hintIndex = 0;
@@ -162,6 +179,7 @@ export class Game {
       for (const n of this.grid.neighbours(c)) this.grid.suspect[n] = 1;
     }
     this.grid.refreshPH(true);
+    this.startPH = this.spill.map((c) => this.grid.pH[c]);
     this.t = 0;
     this.status = 'play';
     this.failReason = '';
@@ -179,6 +197,13 @@ export class Game {
       return { id: a.id, name: a.name, icon: a.icon, lo: a.lo, hi: a.hi, decay: a.decay, cells, at: a.at, health: 100, pH: this.grid.zonePH(cells), minHealth: 100 };
     });
     this.stats = { chem: 0, water: 0, puffs: 0, refills: 0 };
+    this.score = 0;
+    this.combo = 0;
+    this.bestCombo = 0;
+    this.lastRestore = -10;
+    this.restored = new Set();
+    this.mistCharge = 0;
+    this.wilt = new Float32Array(this.grid.count);
     this.tutorialStep = 0;
     this.hint = '';
     this.hintIndex = 0;
@@ -270,6 +295,15 @@ export class Game {
     if (this.status !== 'play') return;
     this.t += dt;
     this.throwCd = Math.max(0, this.throwCd - dt);
+    if (this.gadgets.mist < this.loadout.mist) {
+      this.mistCharge += dt / MIST_RECHARGE;
+      if (this.mistCharge >= 1) {
+        this.mistCharge = 0;
+        this.gadgets.mist++;
+        this.fx.push({ type: 'toast', text: 'ערפל אוניברסלי נטען +1' });
+      }
+    } else this.mistCharge = 0;
+    if (this.t - this.lastRestore > COMBO_WINDOW) this.combo = 0;
     this.movePlayer(dt, input);
     this.setAim(input.aimX, input.aimZ);
     this.spray(dt, input.spray);
@@ -526,10 +560,29 @@ export class Game {
     const m = this.mission;
     const g = this.grid;
     g.step(dt, this.t, m.sources ? m.sources(g) : [], m.rain ? m.rain(this.t) : null);
+    // Ground that stays well outside its band wilts after a while: plants show *where*
+    // something is wrong (never which way, never when it is fixed), so the spread is visible.
+    for (let c = 0; c < g.count; c++) {
+      if (g.suspect[c]) continue;
+      if (!g.inBand(c, m.tol + 0.3)) {
+        this.wilt[c] += dt;
+        if (this.wilt[c] > WILT_TIME) g.suspect[c] = 1;
+      } else this.wilt[c] = 0;
+    }
     // Restored ground blooms once it is known to be back in band.
     for (let c = 0; c < g.count; c++) {
       const inb = g.inBand(c);
       if (!inb) g.scarred[c] = 1;
+      else if (g.scarred[c] && g.know[c] & KNOW_UNIVERSAL && !this.restored.has(c)) {
+        this.restored.add(c);
+        this.combo = this.t - this.lastRestore <= COMBO_WINDOW ? this.combo + 1 : 1;
+        this.bestCombo = Math.max(this.bestCombo, this.combo);
+        this.lastRestore = this.t;
+        const points = 100 * Math.min(5, this.combo);
+        this.score += points;
+        const [x, z] = g.center(c);
+        this.fx.push({ type: 'restored', x, z, points, combo: this.combo });
+      }
       const target = inb && g.scarred[c] && g.know[c] ? 1 : 0;
       g.bloom[c] += (target - g.bloom[c]) * Math.min(1, dt * 1.5);
     }
@@ -588,6 +641,7 @@ export class Game {
     this.status = 'won';
     const minH = this.assets.length ? Math.min(...this.assets.map((a) => a.minHealth)) : 100;
     this.stars = 1 + (this.stats.chem <= this.mission.idealChem * 1.6 ? 1 : 0) + (minH >= 50 ? 1 : 0);
+    this.score += 250 * this.stars + Math.round(minH * 5);
     this.fx.push({ type: 'won' });
     this.log('win', { value: `stars:${this.stars}` });
   }
@@ -672,6 +726,41 @@ export class Game {
     return { kind: 'none', text: '?' };
   }
 
+  /**
+   * What the indicators used on a cell say about its pH, as a range on the 0–14 scale.
+   * Litmus and phenolphthalein give ranges (and are intersected when both were used);
+   * universal indicator gives a number to within about one unit (Workbook).
+   */
+  readingRange(c: number): { lo: number; hi: number; exact?: number } | null {
+    const g = this.grid;
+    const k = g.know[c];
+    const p = g.pH[c];
+    if (k & KNOW_UNIVERSAL) return { lo: Math.max(0, p - 0.5), hi: Math.min(14, p + 0.5), exact: p };
+    let lo = 0;
+    let hi = 14;
+    let any = false;
+    if (k & KNOW_LITMUS) {
+      any = true;
+      const r = litmus(p);
+      if (r === 'acid') hi = 4.5;
+      else if (r === 'base') lo = 8.2;
+      else {
+        lo = 4.5;
+        hi = 8.2;
+      }
+    }
+    if (k & KNOW_PHENOL) {
+      any = true;
+      const r = phenolphthalein(p);
+      if (r === 'colorless') hi = Math.min(hi, 8.2);
+      else if (r === 'pale-pink') {
+        lo = Math.max(lo, 8.2);
+        hi = Math.min(hi, 10);
+      } else lo = Math.max(lo, 10);
+    }
+    return any ? { lo, hi } : null;
+  }
+
   renderGameToText(): string {
     const g = this.grid;
     const near: Array<Record<string, unknown>> = [];
@@ -708,6 +797,10 @@ export class Game {
       nearbyProblemCells: near.slice(0, 24),
       ledger: { acidIn: +g.ledger.acidIn.toFixed(4), baseIn: +g.ledger.baseIn.toFixed(4), salt: +g.ledger.salt.toFixed(4) },
       stats: { chemUsed: +this.stats.chem.toFixed(4), water: +this.stats.water.toFixed(1), refills: this.stats.refills },
+      score: this.score,
+      combo: this.combo,
+      mistRecharge: +this.mistCharge.toFixed(2),
+      unsurveyed: this.unsurveyed(),
       packetsInFlight: this.packets.length,
     });
   }

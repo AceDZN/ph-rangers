@@ -57,6 +57,7 @@ vec4 ovC;`,
   diffuseColor.rgb = mix(diffuseColor.rgb, ovC.rgb, ovC.a);
   float n = fract(sin(dot(floor(vWPos.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.97, 0.94), step(0.78, n) * st.g * 0.85);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.62, 0.75), st.a * 0.8);
   float rip = 0.5 + 0.5 * sin(uTime * 3.0 + vWPos.x * 1.7 + vWPos.z * 1.3);
   diffuseColor.rgb += st.b * rip * vec3(0.25, 0.2, 0.1);
 }`,
@@ -91,6 +92,8 @@ export class World {
   private dummy = new THREE.Object3D();
   private propGroup = new THREE.Group();
   private fireflies: THREE.Points | null = null;
+  private clouds: THREE.Sprite[] = [];
+  private waterNormal: THREE.Texture | null = null;
   private missionProps = new THREE.Group();
   private wagons: THREE.Object3D[] = [];
   night: boolean;
@@ -114,7 +117,7 @@ export class World {
       uOverlay: { value: this.overlay },
       uState: { value: this.state },
       uSize: { value: layout.size },
-      uGlow: { value: night ? 1.5 : 0.12 },
+      uGlow: { value: night ? 1.0 : 0.12 },
       uTime: { value: 0 },
     };
 
@@ -306,15 +309,52 @@ export class World {
     return mesh;
   }
 
+  /** Tiling ripple normal map, drawn once on a canvas. */
+  private rippleNormals(): THREE.Texture {
+    const N = 128;
+    const h = new Float32Array(N * N);
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const u = (x / N) * Math.PI * 2;
+        const v = (y / N) * Math.PI * 2;
+        h[y * N + x] = Math.sin(u * 3 + Math.sin(v * 2) * 1.5) * 0.5 + Math.sin(v * 5 + u * 2) * 0.3 + Math.sin(u * 7 - v * 4) * 0.2;
+      }
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = N;
+    const ctx = cv.getContext('2d')!;
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)];
+        const dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
+        const nx = -dx * 1.4;
+        const ny = -dy * 1.4;
+        const l = Math.hypot(nx, ny, 1);
+        const i = (y * N + x) * 4;
+        img.data[i] = ((nx / l) * 0.5 + 0.5) * 255;
+        img.data[i + 1] = ((ny / l) * 0.5 + 0.5) * 255;
+        img.data[i + 2] = ((1 / l) * 0.5 + 0.5) * 255;
+        img.data[i + 3] = 255;
+      }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(0.25, 0.25);
+    return t;
+  }
+
   private buildWater() {
     const L = this.layout;
+    this.waterNormal = this.rippleNormals();
     const mat = overlayMaterial(
       new THREE.MeshStandardMaterial({
-        color: this.night ? 0x1a3a5a : 0x4aa8d8,
-        roughness: 0.15,
-        metalness: 0.1,
+        color: this.night ? 0x1a3a5a : 0x3f9fd4,
+        roughness: 0.08,
+        metalness: 0.15,
         transparent: true,
-        opacity: 0.86,
+        opacity: 0.88,
+        normalMap: this.waterNormal,
+        normalScale: new THREE.Vector2(0.6, 0.6),
       }),
       this.uniforms,
     );
@@ -334,6 +374,7 @@ export class World {
     }
     pts.push(new THREE.Vector3(L.creek[L.creek.length - 1][0], 0, L.creek[L.creek.length - 1][1]));
     const verts: number[] = [];
+    const uvs: number[] = [];
     const idx: number[] = [];
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
@@ -347,6 +388,7 @@ export class World {
       const w = 1.25;
       const y = terrainHeight(L, p.x, p.z) + 0.42;
       verts.push(p.x + nx * w, y, p.z + nz * w, p.x - nx * w, y, p.z - nz * w);
+      uvs.push((p.x + nx * w) / 6, (p.z + nz * w) / 6, (p.x - nx * w) / 6, (p.z - nz * w) / 6);
       if (i < pts.length - 1) {
         const k = i * 2;
         idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
@@ -354,6 +396,7 @@ export class World {
     }
     const cg = new THREE.BufferGeometry();
     cg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    cg.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     cg.setIndex(idx);
     cg.computeVertexNormals();
     const creek = new THREE.Mesh(cg, mat);
@@ -623,48 +666,145 @@ export class World {
   /** Distant hills with hilltop villages, like the mockups' backdrop. */
   private buildBackdrop() {
     const L = this.layout;
-    const hillM = new THREE.MeshStandardMaterial({ color: this.night ? 0x1d2a33 : 0x8fa05a, roughness: 1, flatShading: true });
-    const houseM = new THREE.MeshStandardMaterial({ color: this.night ? 0x404858 : 0xefe4cf, roughness: 1 });
-    const cypM = new THREE.MeshStandardMaterial({ color: this.night ? 0x0f1a14 : 0x2f5a2a, roughness: 1 });
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2 + rand(i) * 0.2;
-      const r = 150 + rand(i + 4) * 40;
-      const x = L.size / 2 + Math.cos(a) * r;
-      const z = L.size / 2 + Math.sin(a) * r;
-      const h = 30 + rand(i + 8) * 35;
-      const hill = new THREE.Mesh(new THREE.ConeGeometry(55 + rand(i + 2) * 30, h, 9, 1), hillM);
-      hill.position.set(x, h / 2 - 6, z);
-      hill.scale.z = 0.6 + rand(i + 1) * 0.6;
-      this.scene.add(hill);
-      if (i % 3 === 0) {
-        for (let k = 0; k < 9; k++) {
-          const hx = x + (rand(i * 9 + k) - 0.5) * 30;
-          const hz = z + (rand(i * 7 + k) - 0.5) * 16;
-          const box = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 4), houseM);
-          box.position.set(hx, h * 0.62 + rand(k) * 3, hz);
-          this.scene.add(box);
+    const night = this.night;
+    const cx = L.size / 2;
+    const cz = L.size / 2;
+    // Rolling Galilee hills: an annulus of terrain beyond the play area, rising outward.
+    const rings = 40;
+    const segs = 160;
+    const r0 = 66;
+    const r1 = 300;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const idx: number[] = [];
+    const c = new THREE.Color();
+    const hillH = (x: number, z: number, r: number) => {
+      const t = (r - r0) / (r1 - r0);
+      const n =
+        Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.017) * 0.5 +
+        Math.sin(x * 0.047 - z * 0.031) * 0.3 +
+        Math.cos(z * 0.06 + x * 0.013) * 0.2;
+      return 4 + Math.pow(t, 0.7) * (34 + n * 26) + n * 4;
+    };
+    for (let i = 0; i <= rings; i++) {
+      const r = r0 + ((r1 - r0) * i) / rings;
+      for (let j = 0; j < segs; j++) {
+        const a = (j / segs) * Math.PI * 2;
+        const x = cx + Math.cos(a) * r;
+        const z = cz + Math.sin(a) * r;
+        const h = hillH(x, z, r);
+        pos.push(x, h, z);
+        const band = Math.sin(h * 1.1) > 0.6; // terrace stripes
+        const n = rand(i * 977 + j);
+        if (night) c.setRGB(0.07, 0.1, 0.12);
+        else {
+          c.setRGB(0.5 + n * 0.08, 0.56 + n * 0.06, 0.28);
+          if (h > 28) c.lerp(new THREE.Color(0.78, 0.7, 0.46), Math.min(1, (h - 28) / 18));
+          if (band) c.multiplyScalar(0.86);
+        }
+        col.push(c.r, c.g, c.b);
+        if (i < rings) {
+          const k = i * segs + j;
+          const k2 = i * segs + ((j + 1) % segs);
+          idx.push(k, k + segs, k2, k2, k + segs, k2 + segs);
         }
       }
     }
-    // Cypress trees along the valley rim.
-    const cg = new THREE.ConeGeometry(0.7, 6, 6);
-    cg.translate(0, 3, 0);
-    const cyp = new THREE.InstancedMesh(cg, cypM, 40);
-    for (let i = 0; i < 40; i++) {
-      const side = i % 4;
-      const t = rand(i + 50) * L.size;
-      const x = side === 0 ? -6 - rand(i) * 8 : side === 1 ? L.size + 6 + rand(i) * 8 : t;
-      const z = side === 2 ? -6 - rand(i) * 8 : side === 3 ? L.size + 6 + rand(i) * 8 : t;
-      const d = Math.max(-x, x - L.size, -z, z - L.size, 0);
-      const cx = Math.min(L.size, Math.max(0, x));
-      const cz = Math.min(L.size, Math.max(0, z));
-      this.dummy.position.set(x, terrainHeight(L, cx, cz) + d * 0.35, z);
-      this.dummy.rotation.set(0, 0, 0);
-      this.dummy.scale.setScalar(0.8 + rand(i + 3) * 0.6);
-      this.dummy.updateMatrix();
-      cyp.setMatrixAt(i, this.dummy.matrix);
+    const hg = new THREE.BufferGeometry();
+    hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    hg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    hg.setIndex(idx);
+    hg.computeVertexNormals();
+    const hills = new THREE.Mesh(hg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+    hills.receiveShadow = false;
+    this.scene.add(hills);
+
+    // Olive groves and cypress dots on the hills, and white villages on a few crests.
+    const blobG = new THREE.IcosahedronGeometry(1.6, 0);
+    const blobs = new THREE.InstancedMesh(blobG, new THREE.MeshStandardMaterial({ color: night ? 0x0d1a12 : 0x5f7a3a, roughness: 1, flatShading: true }), 900);
+    const cypG = new THREE.ConeGeometry(0.9, 7, 6);
+    cypG.translate(0, 3.5, 0);
+    const cyps = new THREE.InstancedMesh(cypG, new THREE.MeshStandardMaterial({ color: night ? 0x0a140d : 0x2f5a2a, roughness: 1, flatShading: true }), 260);
+    let nb = 0;
+    let nc = 0;
+    for (let i = 0; i < 2400 && (nb < 900 || nc < 260); i++) {
+      const a = rand(i * 3.3) * Math.PI * 2;
+      const r = r0 + 6 + rand(i * 7.1) * 150;
+      const x = cx + Math.cos(a) * r;
+      const z = cz + Math.sin(a) * r;
+      const h = hillH(x, z, r);
+      if (rand(i * 5.9) < 0.78 && nb < 900) {
+        this.dummy.position.set(x, h + 0.6, z);
+        this.dummy.scale.set(1 + rand(i) * 0.8, 0.8 + rand(i + 1) * 0.5, 1 + rand(i + 2) * 0.8);
+        this.dummy.rotation.set(0, rand(i) * 6, 0);
+        this.dummy.updateMatrix();
+        blobs.setMatrixAt(nb++, this.dummy.matrix);
+      } else if (nc < 260) {
+        this.dummy.position.set(x, h - 0.3, z);
+        this.dummy.scale.setScalar(0.7 + rand(i + 4) * 0.7);
+        this.dummy.rotation.set(0, 0, 0);
+        this.dummy.updateMatrix();
+        cyps.setMatrixAt(nc++, this.dummy.matrix);
+      }
     }
-    this.scene.add(cyp);
+    blobs.count = nb;
+    cyps.count = nc;
+    this.scene.add(blobs, cyps);
+    const houseM = new THREE.MeshStandardMaterial({ color: night ? 0x3a4250 : 0xf1e8d6, roughness: 1 });
+    const winM = new THREE.MeshBasicMaterial({ color: 0xffc766 });
+    for (let v = 0; v < 6; v++) {
+      const a = (v / 6) * Math.PI * 2 + 0.4;
+      const r = 150 + rand(v * 13) * 60;
+      const vx = cx + Math.cos(a) * r;
+      const vz = cz + Math.sin(a) * r;
+      for (let k = 0; k < 16; k++) {
+        const hx = vx + (rand(v * 31 + k) - 0.5) * 34;
+        const hz = vz + (rand(v * 17 + k) - 0.5) * 22;
+        const hh = hillH(hx, hz, Math.hypot(hx - cx, hz - cz));
+        const w = 3 + rand(k) * 3;
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w, 2.6 + rand(k + 1) * 2, w * (0.7 + rand(k + 2) * 0.5)), houseM);
+        box.position.set(hx, hh + 1.2, hz);
+        box.rotation.y = rand(k + v) * 3;
+        this.scene.add(box);
+        if (night && rand(k * 3 + v) < 0.5) {
+          const win = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), winM);
+          win.position.set(hx, hh + 2, hz);
+          win.lookAt(cx, hh + 2, cz);
+          win.translateZ(w / 2 + 0.05);
+          this.scene.add(win);
+        }
+      }
+    }
+
+    // Soft clouds by day.
+    if (!night) {
+      const cc = document.createElement('canvas');
+      cc.width = 128;
+      cc.height = 64;
+      const x2 = cc.getContext('2d')!;
+      for (let k = 0; k < 9; k++) {
+        const gx = 20 + rand(k) * 88;
+        const gy = 26 + rand(k + 3) * 16;
+        const gr = 14 + rand(k + 6) * 16;
+        const gg = x2.createRadialGradient(gx, gy, 1, gx, gy, gr);
+        gg.addColorStop(0, 'rgba(255,255,255,0.95)');
+        gg.addColorStop(1, 'rgba(255,255,255,0)');
+        x2.fillStyle = gg;
+        x2.fillRect(0, 0, 128, 64);
+      }
+      const ct = new THREE.CanvasTexture(cc);
+      ct.colorSpace = THREE.SRGBColorSpace;
+      for (let k = 0; k < 14; k++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct, transparent: true, depthWrite: false, fog: false, opacity: 0.85 }));
+        const a = rand(k * 9) * Math.PI * 2;
+        const r = 120 + rand(k * 4) * 140;
+        sp.position.set(cx + Math.cos(a) * r, 70 + rand(k * 2) * 40, cz + Math.sin(a) * r);
+        sp.scale.set(70 + rand(k) * 50, 28 + rand(k + 1) * 14, 1);
+        sp.userData.drift = 0.6 + rand(k + 7);
+        this.clouds.push(sp);
+        this.scene.add(sp);
+      }
+    }
   }
 
   /** Props that belong to one mission (wagons, lemons, lime dust, soap bottles). */
@@ -811,7 +951,8 @@ export class World {
       st[i4] = unknown * 255;
       st[i4 + 1] = Math.min(1, g.S[c] * 30) * 255;
       st[i4 + 2] = Math.min(1, g.heat[c] * 60) * 255;
-      st[i4 + 3] = g.bloom[c] * 255;
+      // Wet ground from sprayed or flooding water: darker and bluer.
+      st[i4 + 3] = Math.min(1, Math.max(0, g.V[c] - g.V0[c]) / 6) * 255;
     }
     this.overlay.needsUpdate = true;
     this.state.needsUpdate = true;
@@ -894,6 +1035,11 @@ export class World {
     bp.needsUpdate = true;
     (this.bees.material as THREE.PointsMaterial).opacity = beeOk ? 1 : 0.3;
 
+    for (const cl of this.clouds) cl.position.x += (cl.userData.drift as number) * dt;
+    if (this.waterNormal) {
+      this.waterNormal.offset.x = t * 0.02;
+      this.waterNormal.offset.y = t * 0.013;
+    }
     if (this.fireflies) {
       this.fireflies.position.y = Math.sin(t * 0.7) * 0.25;
       (this.fireflies.material as THREE.PointsMaterial).opacity = 0.6 + Math.sin(t * 3) * 0.3;
@@ -905,7 +1051,7 @@ export class World {
         o.scale.setScalar(s);
       }
     });
-    void dt;
+
   }
 
   /** Sun follows the player so shadows stay sharp near the action. */

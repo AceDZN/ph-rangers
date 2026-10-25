@@ -33,5 +33,6 @@ Brief: [docs/handoff/BUILD_HANDOFF.md](docs/handoff/BUILD_HANDOFF.md), [docs/han
 
 ## TODO / ideas
 
-- Celebrate/slip animations, a proper animated farmer NPC.
-- Optional: wider spray (fan nozzle) for big patches.
+- Shorten missions 2, 5 and 6 (the bot needs 2.5–3.5 min each); consider a fan nozzle for big patches.
+- Normalize the score scale across missions; a slip animation.
+- Playtest with real 13-year-olds (fun and learning are still untested).

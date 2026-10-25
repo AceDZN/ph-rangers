@@ -92,14 +92,19 @@ export class World {
   private dummy = new THREE.Object3D();
   private propGroup = new THREE.Group();
   private fireflies: THREE.Points | null = null;
+  private bushModel = false;
+  private mixers: THREE.AnimationMixer[] = [];
   private clouds: THREE.Sprite[] = [];
   private waterNormal: THREE.Texture | null = null;
   private missionProps = new THREE.Group();
   private wagons: THREE.Object3D[] = [];
   night: boolean;
 
+  private models: Models;
+
   constructor(layout: Layout, night: boolean, models: Models) {
     this.layout = layout;
+    this.models = models;
     this.night = night;
     const n = Math.round(layout.size / layout.cell);
     const mk = () => {
@@ -427,6 +432,17 @@ export class World {
     // Fish.
     const fishMat = new THREE.MeshStandardMaterial({ color: 0xff8f3a, roughness: 0.5 });
     for (let i = 0; i < 6; i++) {
+      const fm = this.models.fish();
+      if (fm) {
+        // The Tripo fish faces +z; the swim code expects +x forward.
+        const f = new THREE.Group();
+        fm.rotation.y = Math.PI / 2;
+        f.add(fm);
+        f.userData.phase = rand(i + 40) * 10;
+        this.fish.push(f);
+        this.scene.add(f);
+        continue;
+      }
       const f = new THREE.Group();
       const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 6), fishMat);
       body.scale.set(1.8, 0.8, 0.6);
@@ -469,15 +485,43 @@ export class World {
         }
       }
     };
-    for (const w of L.walls) addWall(w[0], w[1], 1, 0.8);
-    // Terrace retaining walls along each bench row.
     const T = L.terraces;
-    for (let z = T.z0 + 4; z < T.z1; z += 5) addWall([T.x0, z], [T.x1, z], 1, 0.55);
-    const wallMesh = new THREE.InstancedMesh(stoneG, new THREE.MeshStandardMaterial({ color: 0xcbbfa6, roughness: 1, flatShading: true }), walls.length);
-    walls.forEach((m, i) => wallMesh.setMatrixAt(i, m));
-    wallMesh.castShadow = true;
-    wallMesh.receiveShadow = true;
-    g.add(wallMesh);
+    const wallModel = models.meshOf('wall', 0.85);
+    if (wallModel) {
+      // Tripo dry-stone wall segments laid end to end along every wall and terrace edge.
+      const segs: THREE.Matrix4[] = [];
+      const lay = (a: readonly [number, number], b: readonly [number, number], sc: number) => {
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const step = wallModel.length * sc * 0.96;
+        const ang = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
+        for (let d = step / 2; d < len; d += step) {
+          const t = d / len;
+          const x = a[0] + (b[0] - a[0]) * t;
+          const z = a[1] + (b[1] - a[1]) * t;
+          this.dummy.position.set(x, terrainHeight(L, x, z) - 0.05, z);
+          this.dummy.rotation.set(0, ang + (rand(d * 7) - 0.5) * 0.06, 0);
+          this.dummy.scale.set(sc, sc * (0.9 + rand(d) * 0.2), sc);
+          this.dummy.updateMatrix();
+          segs.push(this.dummy.matrix.clone());
+        }
+      };
+      for (const w of L.walls) lay(w[0], w[1], 1);
+      for (let z = T.z0 + 4; z < T.z1; z += 5) lay([T.x0, z], [T.x1, z], 0.75);
+      const wm = new THREE.InstancedMesh(wallModel.geometry, wallModel.material, segs.length);
+      segs.forEach((m, i) => wm.setMatrixAt(i, m));
+      wm.castShadow = true;
+      wm.receiveShadow = true;
+      g.add(wm);
+    } else {
+      for (const w of L.walls) addWall(w[0], w[1], 1, 0.8);
+      // Terrace retaining walls along each bench row.
+      for (let z = T.z0 + 4; z < T.z1; z += 5) addWall([T.x0, z], [T.x1, z], 1, 0.55);
+      const wallMesh = new THREE.InstancedMesh(stoneG, new THREE.MeshStandardMaterial({ color: 0xcbbfa6, roughness: 1, flatShading: true }), walls.length);
+      walls.forEach((m, i) => wallMesh.setMatrixAt(i, m));
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
+      g.add(wallMesh);
+    }
     // Scattered rocks.
     const rocks: THREE.Matrix4[] = [];
     for (let i = 0; i < 160; i++) {
@@ -490,7 +534,21 @@ export class World {
       this.dummy.updateMatrix();
       rocks.push(this.dummy.matrix.clone());
     }
-    const rockMesh = new THREE.InstancedMesh(stoneG, new THREE.MeshStandardMaterial({ color: 0xd8d0bf, roughness: 1, flatShading: true }), rocks.length);
+    const rockModel = models.meshOf('rocks', 0.9);
+    const rockMesh = rockModel
+      ? new THREE.InstancedMesh(rockModel.geometry, rockModel.material, rocks.length)
+      : new THREE.InstancedMesh(stoneG, new THREE.MeshStandardMaterial({ color: 0xd8d0bf, roughness: 1, flatShading: true }), rocks.length);
+    if (rockModel) {
+      // Rocks sit upright, only spun around y.
+      rocks.forEach((m, i) => {
+        const p = new THREE.Vector3().setFromMatrixPosition(m);
+        this.dummy.position.copy(p).setY(p.y - 0.15);
+        this.dummy.rotation.set(0, rand(i * 3) * 6, 0);
+        this.dummy.scale.setScalar(0.5 + rand(i + 3) * 1.2);
+        this.dummy.updateMatrix();
+        m.copy(this.dummy.matrix);
+      });
+    }
     rocks.forEach((m, i) => rockMesh.setMatrixAt(i, m));
     rockMesh.castShadow = true;
     g.add(rockMesh);
@@ -547,7 +605,17 @@ export class World {
         g.add(tm);
       } else house(hs.x, hs.z, hs.rot, hs.w, hs.d, 3.2);
     }
-    const school = house(L.school.x, L.school.z, L.school.rot, 9, 5, 4);
+    const schoolModel = models.school();
+    let school: THREE.Object3D;
+    if (schoolModel) {
+      schoolModel.position.set(L.school.x, terrainHeight(L, L.school.x, L.school.z) - 0.1, L.school.z);
+      schoolModel.rotation.y = L.school.rot + Math.PI;
+      g.add(schoolModel);
+      school = new THREE.Group();
+      school.position.copy(schoolModel.position);
+      school.rotation.y = L.school.rot;
+      g.add(school);
+    } else school = house(L.school.x, L.school.z, L.school.rot, 9, 5, 4);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.5), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
     pole.position.set(5.2, 2.25, 2);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.8), new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
@@ -582,12 +650,15 @@ export class World {
     const B = L.blueberry;
     const cells: Array<[number, number]> = [];
     for (let z = B.z0 + 1; z < B.z1; z += 3) for (let x = B.x0 + 0.8; x < B.x1; x += 1.4) cells.push([x, z]);
-    const bushG = new THREE.IcosahedronGeometry(0.62, 1);
-    this.bushes = new THREE.InstancedMesh(bushG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), cells.length);
+    const bushModel = models.meshOf('bush', 1.0);
+    const bushG = bushModel ? bushModel.geometry : new THREE.IcosahedronGeometry(0.62, 1);
+    const bushMat = bushModel ? (bushModel.material as THREE.MeshStandardMaterial).clone() : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
+    this.bushModel = !!bushModel;
+    this.bushes = new THREE.InstancedMesh(bushG, bushMat, cells.length);
     const grid = new Grid(L);
     cells.forEach(([x, z], i) => {
-      this.dummy.position.set(x, terrainHeight(L, x, z) + 0.45, z);
-      this.dummy.scale.set(1, 0.85, 1);
+      this.dummy.position.set(x, terrainHeight(L, x, z) + (this.bushModel ? -0.02 : 0.45), z);
+      this.dummy.scale.set(1, this.bushModel ? 0.9 + rand(i) * 0.3 : 0.85, 1);
       this.dummy.rotation.y = rand(i) * 3;
       this.dummy.updateMatrix();
       this.bushes!.setMatrixAt(i, this.dummy.matrix);
@@ -722,9 +793,18 @@ export class World {
     // Olive groves and cypress dots on the hills, and white villages on a few crests.
     const blobG = new THREE.IcosahedronGeometry(1.6, 0);
     const blobs = new THREE.InstancedMesh(blobG, new THREE.MeshStandardMaterial({ color: night ? 0x0d1a12 : 0x5f7a3a, roughness: 1, flatShading: true }), 900);
-    const cypG = new THREE.ConeGeometry(0.9, 7, 6);
-    cypG.translate(0, 3.5, 0);
-    const cyps = new THREE.InstancedMesh(cypG, new THREE.MeshStandardMaterial({ color: night ? 0x0a140d : 0x2f5a2a, roughness: 1, flatShading: true }), 260);
+    const cypModel = this.models.meshOf('cypress', 7);
+    let cypG: THREE.BufferGeometry;
+    let cypMat: THREE.Material;
+    if (cypModel) {
+      cypG = cypModel.geometry;
+      cypMat = cypModel.material;
+    } else {
+      cypG = new THREE.ConeGeometry(0.9, 7, 6);
+      cypG.translate(0, 3.5, 0);
+      cypMat = new THREE.MeshStandardMaterial({ color: night ? 0x0a140d : 0x2f5a2a, roughness: 1, flatShading: true });
+    }
+    const cyps = new THREE.InstancedMesh(cypG, cypMat, 260);
     let nb = 0;
     let nc = 0;
     for (let i = 0; i < 2400 && (nb < 900 || nc < 260); i++) {
@@ -810,6 +890,7 @@ export class World {
   /** Props that belong to one mission (wagons, lemons, lime dust, soap bottles). */
   setMission(game: Game, models: Models) {
     this.missionProps.clear();
+    this.mixers = [];
     this.wagons = [];
     const L = this.layout;
     for (const [x, z] of game.mission.wagons) {
@@ -912,6 +993,7 @@ export class World {
       rina.position.set(L.blueberry.x1 + 2, terrainHeight(L, L.blueberry.x1 + 2, L.blueberry.z0 + 2), L.blueberry.z0 + 2);
       rina.rotation.y = -Math.PI / 2;
       this.missionProps.add(rina);
+      if (rina.userData.mixer) this.mixers.push(rina.userData.mixer as THREE.AnimationMixer);
     }
   }
 
@@ -990,6 +1072,11 @@ export class World {
       const sick = berryAsset ? (100 - berryAsset.health) / 100 : 0;
       this.bushCells.forEach((_c, i) => {
         const off = sick * 2;
+        if (this.bushModel) {
+          col.setRGB(1, 1 - Math.min(0.35, off * 0.2), 1 - Math.min(0.75, off * 0.45));
+          this.bushes!.setColorAt(i, col);
+          return;
+        }
         col.setRGB(0.18 + Math.min(0.55, off * 0.3), 0.42 + Math.min(0.2, off * 0.1), 0.2 - Math.min(0.12, off * 0.06));
         this.bushes!.setColorAt(i, col);
       });
@@ -1036,6 +1123,7 @@ export class World {
     (this.bees.material as THREE.PointsMaterial).opacity = beeOk ? 1 : 0.3;
 
     for (const cl of this.clouds) cl.position.x += (cl.userData.drift as number) * dt;
+    for (const mx of this.mixers) mx.update(dt);
     if (this.waterNormal) {
       this.waterNormal.offset.x = t * 0.02;
       this.waterNormal.offset.y = t * 0.013;

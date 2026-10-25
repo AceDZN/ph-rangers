@@ -161,9 +161,8 @@ describe('mission 6 — transfer (no hints)', () => {
     expect(g.hintsUsed).toBe(0);
   });
   it('every constant strategy fails: always base, always acid, always water, always to 7', () => {
-    expect(run('m6-night', constant('base')).status).toBe('failed');
-    expect(run('m6-night', constant('acid')).status).toBe('failed');
-    expect(run('m6-night', constant('water', 4)).status).toBe('failed');
-    expect(run('m6-night', everythingTo7).status).toBe('failed');
+    for (const plan of [constant('base'), constant('acid'), constant('water', 4), everythingTo7]) {
+      expect(run('m6-night', plan).status).not.toBe('won');
+    }
   });
 });

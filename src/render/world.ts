@@ -83,6 +83,8 @@ export class World {
   private flowers: THREE.InstancedMesh;
   private flowerCells: number[] = [];
   private flowerColors: THREE.Color[] = [];
+  private flowers2: THREE.InstancedMesh | null = null;
+  private realFlowers = false;
   private bushes: THREE.InstancedMesh | null = null;
   private bushCells: number[] = [];
   private fish: THREE.Group[] = [];
@@ -179,10 +181,21 @@ export class World {
     head.translate(0, 0.32, 0);
     const stem = new THREE.CylinderGeometry(0.012, 0.012, 0.32, 3);
     stem.translate(0, 0.16, 0);
-    const fg = mergeGeos(head, stem);
-    const fm = new THREE.MeshStandardMaterial({ roughness: 0.7 });
     const perCell = 7;
+    // Tripo red anemones (כלניות) and daisies when available, simple stems otherwise.
+    const anemone = models.meshOf('anemone', 0.3);
+    const daisy = models.meshOf('poppy-daisy', 0.28);
+    this.realFlowers = !!anemone;
+    const fg = anemone ? anemone.geometry : mergeGeos(head, stem);
+    const fm = anemone ? anemone.material : new THREE.MeshStandardMaterial({ roughness: 0.7 });
     this.flowers = new THREE.InstancedMesh(fg, fm, n * n * perCell);
+    if (daisy) {
+      this.flowers2 = new THREE.InstancedMesh(daisy.geometry, daisy.material, n * n * perCell);
+      this.flowers2.count = 0;
+      this.flowers2.frustumCulled = false;
+      this.flowers2.castShadow = false;
+      this.scene.add(this.flowers2);
+    }
     this.flowers.count = 0;
     this.flowers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.flowers.frustumCulled = false;
@@ -191,7 +204,7 @@ export class World {
     for (let c = 0; c < n * n; c++) {
       for (let k = 0; k < perCell; k++) {
         this.flowerCells.push(c);
-        col.setHex(palette[(c * 7 + k) % palette.length]);
+        col.setHex(this.realFlowers ? 0xffffff : palette[(c * 7 + k) % palette.length]);
         this.flowerColors.push(col.clone());
         this.flowers.setColorAt(this.flowerCells.length - 1, col);
       }
@@ -1012,15 +1025,32 @@ export class World {
     else if (id === 'm4-blueberry') puddle(soilSpills.filter((c) => g.kind[c] === Kind.School), 0xb3e5fc, 0.5);
     if (id === 'm1-lemon') {
       const [x, z] = g.center(game.spill[2]);
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.6, 0.8), new THREE.MeshStandardMaterial({ color: 0x9c6b3a }));
-      crate.position.set(x - 1.2, terrainHeight(L, x - 1.2, z - 1) + 0.25, z - 1);
-      crate.rotation.set(0.4, 0.5, 0.9);
-      crate.castShadow = true;
-      this.missionProps.add(crate);
+      const tcrate = models.lemonCrate();
+      if (tcrate) {
+        // Tipped crate with its open side spilling toward the puddle.
+        tcrate.scale.multiplyScalar(1.6);
+        tcrate.position.set(x - 2.2, terrainHeight(L, x - 2.2, z - 1.6), z - 1.6);
+        tcrate.rotation.y = Math.atan2(2.2, 1.6);
+        this.missionProps.add(tcrate);
+      } else {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.6, 0.8), new THREE.MeshStandardMaterial({ color: 0x9c6b3a }));
+        crate.position.set(x - 1.2, terrainHeight(L, x - 1.2, z - 1) + 0.25, z - 1);
+        crate.rotation.set(0.4, 0.5, 0.9);
+        crate.castShadow = true;
+        this.missionProps.add(crate);
+      }
       const lemonM = new THREE.MeshStandardMaterial({ color: 0xffea00, roughness: 0.45, emissive: 0x6b5a00, emissiveIntensity: 0.35 });
       for (let i = 0; i < 9; i++) {
         const lx = x + (rand(i) - 0.5) * 4;
         const lz = z + (rand(i + 5) - 0.5) * 4;
+        const tl = models.lemon();
+        if (tl) {
+          tl.scale.multiplyScalar(1.6);
+          tl.position.set(lx, terrainHeight(L, lx, lz) - 0.01, lz);
+          tl.rotation.y = rand(i * 7) * 6;
+          this.missionProps.add(tl);
+          continue;
+        }
         const lemon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lemonM);
         lemon.scale.set(1.25, 1, 1);
         lemon.position.set(lx, terrainHeight(L, lx, lz) + 0.17, lz);
@@ -1124,6 +1154,7 @@ export class World {
     // Flowers bloom on restored cells.
     const L = this.layout;
     let fi = 0;
+    let fj = 0;
     for (let i = 0; i < this.flowerCells.length; i++) {
       const c = this.flowerCells[i];
       const bl = g.bloom[c];
@@ -1136,10 +1167,19 @@ export class World {
       this.dummy.position.set(x, terrainHeight(L, x, z) - 0.02, z);
       this.dummy.scale.setScalar(bl * (0.8 + rand(i) * 0.5));
       this.dummy.rotation.set(Math.sin(t * 1.5 + i) * 0.08, 0, Math.cos(t * 1.3 + i) * 0.08);
+      this.dummy.rotation.y = rand(i * 3.1) * 6;
       this.dummy.updateMatrix();
+      if (this.flowers2 && i % 3 === 1) {
+        this.flowers2.setMatrixAt(fj++, this.dummy.matrix);
+        continue;
+      }
       this.flowers.setMatrixAt(fi, this.dummy.matrix);
       this.flowers.setColorAt(fi, this.flowerColors[i]);
       fi++;
+    }
+    if (this.flowers2) {
+      this.flowers2.count = fj;
+      this.flowers2.instanceMatrix.needsUpdate = true;
     }
     this.flowers.count = fi;
     this.flowers.instanceMatrix.needsUpdate = true;

@@ -51,7 +51,7 @@ export class Models {
   async load(onProgress?: (p: number) => void) {
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    const names = ['ranger', 'olive', 'beehive', 'truck', 'wagon', 'house', 'farmer', 'wall', 'rocks', 'school', 'bush', 'cypress', 'fish'];
+    const names = ['ranger', 'olive', 'beehive', 'truck', 'wagon', 'house', 'farmer', 'wall', 'rocks', 'school', 'bush', 'cypress', 'fish', 'lemon-crate', 'lemon', 'anemone', 'poppy-daisy'];
     let done = 0;
     await Promise.all(
       names.map(async (n) => {
@@ -122,6 +122,14 @@ export class Models {
     const clips: Record<string, THREE.AnimationAction> = {};
     for (const clip of g.animations) clips[clip.name.toLowerCase()] = mixer.clipAction(clip);
     return { root, mixer, clips };
+  }
+
+  lemonCrate(): THREE.Object3D | null {
+    return this.clone('lemon-crate', 0.45);
+  }
+
+  lemon(): THREE.Object3D | null {
+    return this.clone('lemon', 0.09);
   }
 
   school(): THREE.Object3D | null {

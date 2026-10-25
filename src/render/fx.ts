@@ -173,13 +173,9 @@ export class Fx {
           const p = new THREE.Vector3(e.x + (Math.random() - 0.5) * 1.6, this.h(e.x, e.z) + 0.3, e.z + (Math.random() - 0.5) * 1.6);
           this.puff(p, 0xffffff, 0.8 + Math.random() * 0.6, 1.3, new THREE.Vector3(0, 1.4 + Math.random(), 0), 2.2, 0.75);
         }
-        // Fizz bubbles.
-        for (let k = 0; k < 2; k++) {
-          const v = new THREE.Vector3((Math.random() - 0.5) * 1.2, 2 + Math.random() * 1.5, (Math.random() - 0.5) * 1.2);
-          this.drops.push({ p: new THREE.Vector3(e.x, this.h(e.x, e.z) + 0.1, e.z), v, life: 0.5, max: 0.5, color: new THREE.Color(0xeaffff), size: 0.7 });
-        }
+
       } else if (e.type === 'overshoot') {
-        this.ring(e.x, e.z, e.pH > 7 ? 0xa040ff : 0xff3030, 6, 0.9);
+        this.ring(e.x, e.z, e.dir === 'base' ? 0xa040ff : 0xff3030, 6, 0.9);
       } else if (e.type === 'inband') {
         this.ring(e.x, e.z, 0x5cff7a, 4, 0.7);
         for (let k = 0; k < 6; k++) {
@@ -268,7 +264,8 @@ export class Fx {
     // Steam from cells still hot from neutralization.
     const g = game.grid;
     for (let c = 0; c < g.count; c++) {
-      if (g.heat[c] > 0.0008 && Math.random() < Math.min(0.5, g.heat[c] * 60) * dt * 8) {
+      // Heat is only noticeable while lots of acid or base reacts (same rule as the fizz event).
+      if (g.heat[c] > 0.0008 && (g.pH[c] < 4.5 || g.pH[c] > 9.5) && Math.random() < Math.min(0.5, g.heat[c] * 60) * dt * 8) {
         const [x, z] = g.center(c);
         const p = new THREE.Vector3(x + (Math.random() - 0.5) * 2.4, this.h(x, z) + 0.3, z + (Math.random() - 0.5) * 2.4);
         this.puff(p, 0xffffff, 0.9, 1.6, new THREE.Vector3(0, 1.2, 0), 2, 0.55);

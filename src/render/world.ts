@@ -742,6 +742,22 @@ export class World {
         }
       }
     }
+    if (id === 'm3-quarry') {
+      const fert = game.spill.find((c) => g.pH[c] < 5);
+      if (fert !== undefined) {
+        const [x, z] = g.center(fert);
+        const sack = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.6), new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 1 }));
+        sack.position.set(x + 0.8, terrainHeight(L, x + 0.8, z) + 0.17, z - 0.5);
+        sack.rotation.set(0.1, 0.6, 0.25);
+        sack.castShadow = true;
+        const label = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x2e7d32 }));
+        label.position.set(0, 0.18, 0.01);
+        label.rotation.x = -Math.PI / 2;
+        sack.add(label);
+        this.missionProps.add(sack);
+        puddle([fert], 0xd9e7a0, 0.55);
+      }
+    }
     if (id === 'm4-blueberry') {
       const bottleM = new THREE.MeshStandardMaterial({ color: 0x29b6f6 });
       const [x, z] = g.center(game.spill[game.spill.length - 1]);
@@ -764,8 +780,6 @@ export class World {
     const g = game.grid;
     const ov = this.overlay.image.data as Uint8Array;
     const st = this.state.image.data as Uint8Array;
-    const spillSet = new Set(game.spill);
-    const decoySet = new Set(game.decoys);
     for (let c = 0; c < g.count; c++) {
       const k = g.know[c];
       const p = g.pH[c];
@@ -792,7 +806,7 @@ export class World {
       ov[i4 + 2] = b * 255;
       ov[i4 + 3] = a * 255;
       // Grey wash: stressed (out of band) or dust-covered ground nobody has measured exactly yet.
-      const suspicious = !g.inBand(c) || spillSet.has(c) || decoySet.has(c);
+      const suspicious = g.suspect[c] === 1;
       const unknown = suspicious && !(k & KNOW_UNIVERSAL) ? (k & KNOW_PHENOL ? 0.55 : 0.85) : 0;
       st[i4] = unknown * 255;
       st[i4 + 1] = Math.min(1, g.S[c] * 30) * 255;
@@ -830,9 +844,11 @@ export class World {
     // Blueberry bushes: healthy green with berries in band, yellowing outside.
     if (this.bushes) {
       const col = new THREE.Color();
-      this.bushCells.forEach((c, i) => {
-        const p = g.pH[c];
-        const off = p < 4.5 ? 4.5 - p : p > 5.5 ? p - 5.5 : 0;
+      // Bushes show the blueberry asset's health (slow, aggregate), not each cell's pH.
+      const berryAsset = game.assets.find((a) => a.icon === 'berries');
+      const sick = berryAsset ? (100 - berryAsset.health) / 100 : 0;
+      this.bushCells.forEach((_c, i) => {
+        const off = sick * 2;
         col.setRGB(0.18 + Math.min(0.55, off * 0.3), 0.42 + Math.min(0.2, off * 0.1), 0.2 - Math.min(0.12, off * 0.06));
         this.bushes!.setColorAt(i, col);
       });

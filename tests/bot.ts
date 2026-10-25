@@ -4,6 +4,7 @@
 
 import { netForPH, Valve } from '../src/sim/chem';
 import { Game, Gadget, Input, NO_INPUT } from '../src/sim/game';
+import { KNOW_UNIVERSAL } from '../src/sim/world';
 
 const DT = 1 / 60;
 
@@ -100,6 +101,18 @@ export class Bot {
     this.tick(1);
   }
 
+  known(c: number) {
+    return (this.game.grid.know[c] & KNOW_UNIVERSAL) !== 0;
+  }
+
+  /** Make sure a cell has been measured with universal indicator (the only way the bot reads pH). */
+  measure(c: number) {
+    if (this.known(c) || this.done) return;
+    if (this.game.gadgets.mist <= 0) this.refill();
+    if (this.game.gadgets.mist <= 0) return;
+    this.throw('mist', c);
+  }
+
   /**
    * Titrate a cell toward a target pH with pulses: estimate the amount still needed,
    * spray most of it, wait for it to land, read again. Uses ×10 for big amounts if allowed.
@@ -109,6 +122,8 @@ export class Bot {
     const mid = (lo + hi) / 2;
     const t0 = this.game.t;
     while (!this.done && this.game.t - t0 < maxT) {
+      this.measure(c);
+      if (!this.known(c)) return false;
       const p = g.pH[c];
       if (p > lo + 0.1 && p < hi - 0.1) return true;
       this.approach(c);
@@ -142,13 +157,22 @@ export class Bot {
   }
 
   /** Keep every listed cell in band until the mission ends or time runs out. */
-  maintain(cells: number[], maxT: number, allowX10 = true) {
+  maintain(cellsIn: number[], maxT: number, allowX10 = true) {
+    let cells = [...cellsIn];
     const g = this.game.grid;
     const t0 = this.game.t;
     while (!this.done && this.game.t - t0 < maxT) {
+      // Measure first: the bot only judges cells it has misted.
+      const unknown = cells.find((c) => !this.known(c));
+      if (unknown !== undefined && (this.game.gadgets.mist > 0 || this.game.mission.wagons.length)) {
+        this.measure(unknown);
+        if (!this.known(unknown)) cells = cells.filter((c) => c !== unknown);
+        continue;
+      }
       let worst = -1;
       let wd = 0;
       for (const c of cells) {
+        if (!this.known(c)) continue;
         const b = g.band(c);
         const d = g.pH[c] < b.lo + 0.05 ? b.lo + 0.05 - g.pH[c] : g.pH[c] > b.hi - 0.05 ? g.pH[c] - b.hi + 0.05 : 0;
         if (d > wd) {

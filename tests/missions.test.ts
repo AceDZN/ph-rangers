@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../src/sim/game';
 import { MISSIONS } from '../src/sim/missions';
 import { Bot } from './bot';
-import { constant, everythingTo7, intended, run } from './strategies';
+import { blind, constant, everythingTo7, intended, run } from './strategies';
 
 describe('every mission is solvable by its intended approach', () => {
   for (const m of MISSIONS) {
@@ -64,7 +64,7 @@ describe('mission 2 — the ×10 rule through play', () => {
     expect(run('m2-creek', constant('water', 4)).reason).toBe('pond-acid');
     const flood = run('m2-creek', (b, g) => {
       b.refill();
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 9; i++) {
         for (const c of g.grid.creekCells.slice(24, 30)) {
           b.approach(c);
           b.aimCell(c);
@@ -83,9 +83,13 @@ describe('mission 3 — hidden lime dust', () => {
     const bot = new Bot(game);
     bot.throw('phenol', game.grid.idx(11, 7));
     bot.throw('phenol', game.grid.idx(14, 7));
-    const pinkLime = game.spill.filter((c) => game.readingAt(c).text.includes('ורוד')).length;
+    const lime = game.spill.filter((c) => game.grid.pH[c] > 9);
+    const pinkLime = lime.filter((c) => game.readingAt(c).text.includes('ורוד')).length;
     const pinkDecoys = game.decoys.filter((c) => game.readingAt(c).text.includes('ורוד')).length;
-    expect(pinkLime).toBe(game.spill.length);
+    expect(pinkLime).toBe(lime.length);
+    // The acidic fertilizer stays colourless — phenolphthalein never shows acids.
+    const fert = game.spill.find((c) => game.grid.pH[c] < 5)!;
+    expect(game.readingAt(fert).text).toContain('שקוף');
     expect(pinkDecoys).toBe(0);
   });
 
@@ -105,9 +109,11 @@ describe('mission 3 — hidden lime dust', () => {
     expect(o.game.decoys.filter((c) => o.game.grid.pH[c] < 6).length).toBeGreaterThan(3);
   });
 
-  it('spraying base or water on lime fails the olives', () => {
+  it('spraying base on lime kills the olives; water only spreads the lime', () => {
     expect(run('m3-quarry', constant('base')).reason).toBe('olives-base');
-    expect(run('m3-quarry', constant('water', 4)).reason).toBe('olives-base');
+    const w = run('m3-quarry', constant('water', 4));
+    expect(w.status).not.toBe('won');
+    expect(w.outOfBand).toBeGreaterThan(5); // water only spread the lime around
   });
 });
 
@@ -125,6 +131,20 @@ describe('mission 4 — different targets', () => {
 describe('mission 5 — storm front', () => {
   it('doing nothing loses an asset to the acid rain', () => {
     expect(run('m5-storm', () => {}).status).toBe('failed');
+  });
+});
+
+describe('indicators are required', () => {
+  it('an indicator-free ranger (heat probing + rule of thumb) cannot win the transfer', () => {
+    const o = run('m6-night', blind);
+    expect(o.status, `${o.reason} oob=${o.outOfBand}`).not.toBe('won');
+  });
+
+  it('in mission 3 heat probing alone is far slower than using phenolphthalein', () => {
+    const smart = run('m3-quarry', intended['m3-quarry']);
+    const probe = run('m3-quarry', blind);
+    expect(smart.status).toBe('won');
+    if (probe.status === 'won') expect(probe.t).toBeGreaterThan(smart.t * 2);
   });
 });
 

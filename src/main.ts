@@ -559,6 +559,8 @@ function renderBrief() {
 
 function startPlay() {
   audio.unlock();
+  sadT = 0;
+  celebrateT = 0;
   setMode('play');
   requestLock();
   const b = $('banner');
@@ -654,7 +656,10 @@ function handleFx() {
       audio.win();
       celebrateT = 4;
     }
-    else if (e.type === 'failed') audio.fail();
+    else if (e.type === 'failed') {
+      audio.fail();
+      sadT = 6;
+    }
   }
   fx?.handle(game);
   game.fx.length = 0;
@@ -662,6 +667,22 @@ function handleFx() {
 
 let animT = 0;
 let celebrateT = 0;
+let sadT = 0;
+let stepY = 0;
+
+/** Low dry-stone walls are hopped over: lift the ranger while standing on one. */
+function wallStep(x: number, z: number) {
+  let on = 0;
+  for (const [a, b] of game.mission.layout.walls) {
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz)));
+    const d = Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+    if (d < 0.7) on = Math.max(on, 0.8 * (1 - d / 0.7) + 0.25);
+  }
+  stepY += (on - stepY) * 0.35;
+  return stepY;
+}
 let stuckT = 0;
 let lastScore = 0;
 let aimW = 0;
@@ -691,12 +712,16 @@ const tmpV = new THREE.Vector3();
 function updateRanger(dt: number) {
   if (!ranger) return;
   const p = game.player;
-  ranger.root.position.set(p.x, p.y, p.z);
+  ranger.root.position.set(p.x, p.y + wallStep(p.x, p.z), p.z);
   ranger.root.rotation.y = p.yaw;
   const moving = p.speed > 0.6;
   if (ranger.mixer) {
     const cheering = celebrateT > 0 && !!ranger.clips.celebrate && !p.spraying && !moving;
-    const want = cheering
+    const sad = sadT > 0 && !!ranger.clips.kneel;
+    if (sadT > 0) sadT -= dt;
+    const want = sad
+      ? 'kneel'
+      : cheering
       ? 'celebrate'
       : p.spraying && ranger.clips.spray
         ? 'spray'

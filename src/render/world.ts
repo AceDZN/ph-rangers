@@ -653,6 +653,7 @@ export class World {
     const bushModel = models.meshOf('bush', 1.0);
     const bushG = bushModel ? bushModel.geometry : new THREE.IcosahedronGeometry(0.62, 1);
     const bushMat = bushModel ? (bushModel.material as THREE.MeshStandardMaterial).clone() : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
+    if (bushModel) bushMat.color.setRGB(1.5, 1.5, 1.5);
     this.bushModel = !!bushModel;
     this.bushes = new THREE.InstancedMesh(bushG, bushMat, cells.length);
     const grid = new Grid(L);

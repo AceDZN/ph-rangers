@@ -2141,7 +2141,6 @@ body.result-open #hud {
   }
 }
 .focus {
-  position: relative;
   z-index: 3;
   animation: focus-glow 0.9s ease-in-out infinite !important;
   border-color: #ffd54f !important;
@@ -2175,4 +2174,35 @@ body.result-open #hud {
 
 #tutorial[hidden] {
   display: none !important;
+}
+
+/* Picked-up gadget: glowing button, target cursor and a short instruction. */
+.gadget.armed {
+  border-color: #ffd54f !important;
+  box-shadow: 0 0 0 4px rgba(255, 213, 79, 0.9), 0 0 24px rgba(255, 213, 79, 0.9);
+  transform: translateY(-6px);
+}
+.armedhint {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  background: rgba(255, 213, 79, 0.95);
+  color: #3e2a00;
+  font-weight: 800;
+  font-size: 18px;
+  padding: 6px 16px;
+  border-radius: 12px;
+  pointer-events: none;
+}
+body.armed-mode .armedhint {
+  display: block;
+}
+body.armed-mode #game {
+  cursor: cell;
+}
+
+.strength.focus {
+  animation: ruler-glow 0.9s ease-in-out infinite !important;
 }

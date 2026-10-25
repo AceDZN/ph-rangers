@@ -135,9 +135,10 @@ function buildWorld() {
     fx = new Fx(world.scene, m.layout);
     fx.reduced = settings.reduced;
     ranger = models.ranger();
+    currentClip = null;
     world.scene.add(ranger.root);
     if (ranger.root.userData.wand) world.scene.add(ranger.root.userData.wand);
-    if (ranger.clips.idle) ranger.clips.idle.play();
+
     headlamp = null;
     if (m.night) {
       headlamp = new THREE.PointLight(0xcfe0ff, 9, 14, 1.4);
@@ -229,6 +230,10 @@ function onKey(e: KeyboardEvent, down: boolean) {
   if (down) keys.add(e.code);
   else keys.delete(e.code);
   if (!down) return;
+  if (e.code === 'Escape' && armed) {
+    disarm();
+    return;
+  }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (mode === 'play') setMode('paused');
     else if (mode === 'paused') setMode('play');
@@ -316,6 +321,20 @@ canvas.addEventListener('mousedown', (e) => {
     requestLock();
     return;
   }
+  if (e.button === 0 && armed) {
+    // Throw the picked-up gadget where the player clicked.
+    const r = canvas.getBoundingClientRect();
+    mouseFree = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1, active: true };
+    const inp = readInput();
+    game.setAim(inp.aimX, inp.aimZ);
+    throwG(armed);
+    disarm();
+    return;
+  }
+  if (e.button === 2 && armed) {
+    disarm();
+    return;
+  }
   if (e.button === 0) mouseDown = true;
 });
 $('lockhint').addEventListener('click', () => {
@@ -327,6 +346,14 @@ window.addEventListener('mouseup', (e) => {
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 let rightDrag = false;
+let wheelAcc = 0;
+let wheelAt = 0;
+let armed: 'litmus' | 'phenol' | 'mist' | 'canister' | null = null;
+function disarm() {
+  armed = null;
+  document.querySelectorAll('.gadget').forEach((el) => el.classList.remove('armed'));
+  document.body.classList.remove('armed-mode');
+}
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2) rightDrag = true;
 });
@@ -359,7 +386,14 @@ window.addEventListener('mousemove', (e) => {
 canvas.addEventListener(
   'wheel',
   (e) => {
-    if (mode === 'play') game.cycleValve(e.deltaY > 0 ? 1 : -1);
+    // One valve step per deliberate wheel notch; trackpad scrolling must not flip valves.
+    wheelAcc += e.deltaY;
+    const now = performance.now();
+    if (mode === 'play' && Math.abs(wheelAcc) > 120 && now - wheelAt > 400) {
+      game.cycleValve(wheelAcc > 0 ? 1 : -1);
+      wheelAcc = 0;
+      wheelAt = now;
+    }
   },
   { passive: true },
 );
@@ -432,10 +466,18 @@ document.querySelectorAll<HTMLButtonElement>('.valve').forEach((b) =>
     game.selectValve(b.dataset.valve as 'acid' | 'base' | 'water');
   }),
 );
+// Clicking a gadget button picks it up; the next left-click on the ground throws it there.
 document.querySelectorAll<HTMLButtonElement>('.gadget').forEach((b) =>
   b.addEventListener('click', (e) => {
     e.stopPropagation();
-    throwG(b.dataset.gadget as 'litmus' | 'phenol' | 'mist' | 'canister');
+    const k = b.dataset.gadget as 'litmus' | 'phenol' | 'mist' | 'canister';
+    if (touch.used) {
+      throwG(k);
+      return;
+    }
+    armed = armed === k ? null : k;
+    document.querySelectorAll('.gadget').forEach((el) => el.classList.toggle('armed', (el as HTMLElement).dataset.gadget === armed));
+    document.body.classList.toggle('armed-mode', !!armed);
   }),
 );
 $('strength').addEventListener('click', () => game.toggleStrength());
@@ -690,6 +732,7 @@ function handleFx() {
 
 let animT = 0;
 let celebrateT = 0;
+let currentClip: THREE.AnimationAction | null = null;
 let sadT = 0;
 let stepY = 0;
 
@@ -755,19 +798,24 @@ function updateRanger(dt: number) {
               ? 'run'
               : 'walk'
           : 'idle';
-    for (const [k, a] of Object.entries(ranger.clips)) {
-      const on = k === want;
-      if (on && !a.isRunning()) a.reset().fadeIn(0.2).play();
-      if (!on && a.isRunning() && a.getEffectiveWeight() > 0) a.fadeOut(0.2);
-      if (on && k === 'run') a.timeScale = Math.max(0.6, p.speed / 6.6);
+    // Crossfade only when the wanted clip changes; the old one fades out, the new one fades in.
+    const next = ranger.clips[want] ?? ranger.clips.idle;
+    if (next && next !== currentClip) {
+      next.reset();
+      next.setEffectiveWeight(1);
+      next.play();
+      if (currentClip) next.crossFadeFrom(currentClip, 0.2, false);
+      else next.fadeIn(0.2);
+      currentClip = next;
     }
+    if (next && want === 'run') next.timeScale = Math.max(0.6, p.speed / 6.6);
+    else if (next && want === 'walk') next.timeScale = Math.max(0.7, p.speed / 2.8);
     ranger.mixer.update(dt);
     // A little victory hop when ground is restored (and the celebrate clip if Tripo gave us one).
     if (celebrateT > 0) {
       celebrateT -= dt;
       if (!ranger.clips.celebrate && !p.spraying && !moving) ranger.root.position.y += Math.max(0, Math.sin((1.2 - celebrateT) * Math.PI * 2.5)) * 0.35;
     }
-    if (!(want in ranger.clips) && ranger.clips.idle && !ranger.clips.idle.isRunning()) ranger.clips.idle.play();
     // Procedural aim pose: both arms reach forward toward the spray target.
     const B = ranger.root.userData.bones as Record<string, THREE.Object3D | null>;
     const wantAim = p.spraying || game.throws.length > 0 ? 1 : 0;
@@ -947,6 +995,7 @@ function render(dt: number) {
   } else audio.spraying(false, 'base', 1);
   fx.update(game, dt, !!game.mission.night);
   fx.showAim(mode === 'play');
+  fx.problemMarks(game, mode === 'play');
   {
     const ti = game.tutorialStepInfo();
     if (ti?.step.pointAt && mode === 'play') fx.pointer(ti.step.pointAt[0], ti.step.pointAt[1], true, animT);

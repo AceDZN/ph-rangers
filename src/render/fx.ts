@@ -48,6 +48,8 @@ export class Fx {
   private tex = softSprite();
   private sprayAcc = 0;
   private jet: THREE.Mesh;
+  private impact: THREE.Mesh;
+  private impactOn = 0;
   private cellBox: THREE.LineLoop;
   private jetOn = 0;
   reduced = false;
@@ -93,6 +95,13 @@ export class Fx {
       new THREE.MeshStandardMaterial({ color: 0x3d8bff, transparent: true, opacity: 0.78, roughness: 0.1, emissive: 0x112244 }),
     );
     this.jet.frustumCulled = false;
+    this.impact = new THREE.Mesh(
+      new THREE.CircleGeometry(0.7, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, map: this.tex }),
+    );
+    this.impact.rotation.x = -Math.PI / 2;
+    this.impact.visible = false;
+    scene.add(this.impact);
     const cg = new THREE.BufferGeometry();
     cg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3));
     this.cellBox = new THREE.LineLoop(cg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false }));
@@ -132,7 +141,13 @@ export class Fx {
 
   /** Spray stream from the nozzle toward the aim point, on the same timing as the sim packets. */
   stream(from: THREE.Vector3, tx: number, tz: number, valve: 'acid' | 'base' | 'water', strength: number, dt: number) {
-    this.sprayAcc += dt * (strength === 10 ? 140 : 100);
+    this.sprayAcc += dt * (strength === 10 ? 90 : 60);
+    // Foamy splash where the jet lands.
+    this.impact.visible = true;
+    this.impactOn = 0.08;
+    this.impact.position.set(tx, this.h(tx, tz) + 0.1, tz);
+    this.impact.scale.setScalar(0.8 + Math.random() * 0.35);
+    (this.impact.material as THREE.MeshBasicMaterial).color.setHex(VALVE_COLOR[valve]).lerp(new THREE.Color(0xffffff), 0.55);
     // The solid jet: a tube along the same ballistic arc the packets fly.
     {
       const end = new THREE.Vector3(tx, this.h(tx, tz) + 0.05, tz);
@@ -141,7 +156,7 @@ export class Fx {
       mid.y += 0.6 + dist * 0.12;
       const curve = new THREE.QuadraticBezierCurve3(from.clone(), mid, end);
       const wob = Math.sin(performance.now() * 0.03) * 0.01;
-      const r = (strength === 10 ? 0.075 : 0.055) + wob;
+      const r = (strength === 10 ? 0.1 : 0.075) + wob;
       this.jet.geometry.dispose();
       this.jet.geometry = new THREE.TubeGeometry(curve, 24, r, 6, false);
       const mat = this.jet.material as THREE.MeshStandardMaterial;
@@ -160,7 +175,7 @@ export class Fx {
       const target = to.clone().add(jitter);
       const v = target.sub(from).divideScalar(T);
       v.y += 0.5 * G * T;
-      this.drops.push({ p: from.clone(), v, life: T, max: T, color: col, size: strength === 10 ? 1.4 : 1 });
+      this.drops.push({ p: from.clone(), v, life: T, max: T, color: col, size: strength === 10 ? 0.9 : 0.65 });
     }
   }
 
@@ -178,7 +193,7 @@ export class Fx {
         const n = Math.min(3, 1 + Math.floor(e.amount * 2000));
         for (let k = 0; k < n; k++) {
           const p = new THREE.Vector3(e.x + (Math.random() - 0.5) * 1.6, this.h(e.x, e.z) + 0.3, e.z + (Math.random() - 0.5) * 1.6);
-          this.puff(p, 0xffffff, 0.8 + Math.random() * 0.6, 1.3, new THREE.Vector3(0, 1.4 + Math.random(), 0), 2.2, 0.75);
+          this.puff(p, 0xffffff, 0.5 + Math.random() * 0.4, 1.1, new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.9 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6), 1.4, 0.32);
         }
 
       } else if (e.type === 'overshoot') {
@@ -268,6 +283,8 @@ export class Fx {
   update(game: Game, dt: number, night: boolean) {
     this.jetOn -= dt;
     if (this.jetOn <= 0) this.jet.visible = false;
+    this.impactOn -= dt;
+    if (this.impactOn <= 0) this.impact.visible = false;
     // Drops (spray + splashes).
     const keep: Drop[] = [];
     let n = 0;
@@ -298,7 +315,7 @@ export class Fx {
       if (g.heat[c] > 0.0008 && (g.pH[c] < 4.5 || g.pH[c] > 9.5) && Math.random() < Math.min(0.5, g.heat[c] * 60) * dt * 8) {
         const [x, z] = g.center(c);
         const p = new THREE.Vector3(x + (Math.random() - 0.5) * 2.4, this.h(x, z) + 0.3, z + (Math.random() - 0.5) * 2.4);
-        this.puff(p, 0xffffff, 0.9, 1.6, new THREE.Vector3(0, 1.2, 0), 2, 0.55);
+        this.puff(p, 0xffffff, 0.6, 1.4, new THREE.Vector3(0, 0.8, 0), 1.3, 0.28);
       }
     }
 

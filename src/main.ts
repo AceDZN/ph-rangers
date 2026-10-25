@@ -455,6 +455,13 @@ $('rnext').addEventListener('click', () => {
   } else setMode('title');
 });
 $('rmenu').addEventListener('click', () => setMode('title'));
+$('rhint').addEventListener('click', () => {
+  game.restart();
+  buildWorld();
+  game.useHint();
+  setMode('brief');
+});
+hud.onLowTank = () => audio.empty();
 for (const id of ['opt-motion', 'opt-motion2'])
   $<HTMLInputElement>(id).addEventListener('change', (e) => {
     settings.reduced = (e.target as HTMLInputElement).checked;
@@ -475,6 +482,7 @@ for (const id of ['opt-mute', 'opt-mute2'])
 
 function setMode(m: Mode) {
   mode = m;
+  document.body.classList.toggle('result-open', m === 'result');
   audio.musicMood = m === 'play' ? (game.mission.night ? 'night' : 'day') : 'menu';
   $('title').hidden = m !== 'title';
   $('brief').hidden = m !== 'brief';
@@ -584,7 +592,10 @@ function showResult() {
     return `rgb(${Math.round(r * 255)},${Math.round(g2 * 255)},${Math.round(b * 255)})`;
   };
   const seenPairs = new Set<string>();
-  $('rchanges').innerHTML = game.spill
+  const lost = game.assets.find((a) => a.health <= 0);
+  $('rchanges').innerHTML = !won && lost
+    ? `<span style="background:${css(lost.pH)}">${lost.name}: pH ${lost.pH.toFixed(1)} · היעד ${lost.lo}–${lost.hi}</span>`
+    : game.spill
     .map((c, i) => {
       const a = game.startPH[i];
       const b = game.grid.pH[c];
@@ -602,6 +613,7 @@ function showResult() {
     store.set('phr-best', best);
   }
   $('rtext').textContent = won ? m.winText : (m.failText[game.failReason] ?? 'אחד האזורים המוגנים יצא מהטווח שלו.');
+  $('rhint').style.display = won || m.noHints ? 'none' : '';
   const firstLine = won
     ? 'כל פעם שחומצה ובסיס נפגשו נוצרו מלח ומים, והשתחרר חום (האדים).'
     : 'טעות היא חלק מהסיור: מדדו שוב עם אינדיקטור, בחרו שסתום לפי התוצאה, ורססו בלחיצות קצרות ליד היעד.';
@@ -634,6 +646,8 @@ function handleFx() {
       audio.chime();
     } else if (e.type === 'restored') {
       audio.restored(e.combo);
+      // Life comes back: a bird answers.
+      if (!game.mission.night) setTimeout(() => audio.bird(), 450);
       hud.bumpScore();
       const y = terrainHeight(game.mission.layout, e.x, e.z) + 1.2;
       hud.floater(camera, window.innerWidth, window.innerHeight, e.x, y, e.z, e.combo >= 2 ? `+${e.points} ×${e.combo}` : `+${e.points}`, e.combo >= 3 ? 'big' : '');
@@ -802,7 +816,16 @@ function updateCamera(dt: number) {
     const fz2 = Math.cos(yaw);
     const front = mode !== 'title';
     const dist = front ? -4.6 : 7;
-    const side = front ? 1.4 : 2.2;
+    // Try a few side offsets and keep the first with a clear view of the ranger.
+    let side = front ? 1.4 : 2.2;
+    for (const sd of front ? [1.4, -1.4, 2.6, -2.6, 0] : [2.2, -2.2, 0, 3.5]) {
+      const cx = p.x - fx2 * dist - fz2 * sd;
+      const cz = p.z - fz2 * dist + fx2 * sd;
+      if (world?.clearView(new THREE.Vector3(cx, p.y + 1.8, cz), new THREE.Vector3(p.x, p.y + 1, p.z))) {
+        side = sd;
+        break;
+      }
+    }
     const tx = p.x - fx2 * dist - fz2 * side;
     const tz = p.z - fz2 * dist + fx2 * side;
     const ty = Math.max(terrainHeight(L0, tx, tz) + 1.4, p.y + (front ? 1.7 : 3.4));
@@ -877,6 +900,18 @@ function render(dt: number) {
   updateRanger(dt);
   footsteps(dt);
   updateCamera(dt);
+  if (mode === 'play') {
+    const L = game.mission.layout;
+    const pp = game.player;
+    world.updateOcclusion(
+      camera.position,
+      [
+        new THREE.Vector3(pp.x, pp.y + 1, pp.z),
+        new THREE.Vector3(game.aim.x, terrainHeight(L, game.aim.x, game.aim.z) + 0.3, game.aim.z),
+      ],
+      dt,
+    );
+  } else world.updateOcclusion(camera.position, [new THREE.Vector3(game.player.x, game.player.y + 1, game.player.z)], dt);
   world.update(game, animT, dt);
   world.followSun(game.player.x, game.player.y, game.player.z);
   if (headlamp) headlamp.position.set(game.player.x, game.player.y + 3, game.player.z);
@@ -891,6 +926,22 @@ function render(dt: number) {
     audio.spraying(has, valve, game.tank.strength);
   } else audio.spraying(false, 'base', 1);
   fx.update(game, dt, !!game.mission.night);
+  // Ambient beds: rain under the storm, running water near the creek or pond.
+  {
+    const L = game.mission.layout;
+    const p = game.player;
+    let dw = Math.hypot(p.x - L.pond.x, p.z - L.pond.z) - L.pond.r;
+    for (let k = 0; k < L.creek.length - 1; k++) {
+      const a = L.creek[k];
+      const b = L.creek[k + 1];
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+      const t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / (dx * dx + dz * dz)));
+      dw = Math.min(dw, Math.hypot(p.x - (a[0] + dx * t), p.z - (a[1] + dz * t)));
+    }
+    audio.beds(mode === 'play' ? world.stormHere : 0, mode === 'play' ? Math.max(0, 1 - dw / 14) : 0);
+    if (world.lightning) audio.thunder();
+  }
   if (mode === 'play' || mode === 'paused' || mode === 'result') hud.update(game, camera, window.innerWidth, window.innerHeight, dt);
   if (!game.mission.night) {
     birdT -= dt;

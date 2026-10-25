@@ -66,15 +66,18 @@ export class Hud {
 
   update(game: Game, camera: THREE.Camera, w: number, h: number, dt: number) {
     const m = game.mission;
-    // Timer: storm countdown when there is one, else elapsed time. Bar = weakest asset.
-    const remaining = m.minTime > 0 ? Math.max(0, m.minTime - game.t) : game.t;
+    // Timer: a labelled storm countdown when the mission has one, otherwise elapsed time.
+    const storm = m.minTime > 0;
+    const remaining = storm ? Math.max(0, m.minTime - game.t) : game.t;
     const mm = Math.floor(remaining / 60);
     const ss = Math.floor(remaining % 60);
     $('time').textContent = `${mm}:${String(ss).padStart(2, '0')}`;
     const minH = game.assets.length ? Math.min(...game.assets.map((a) => a.health)) : 100;
-    const bar = m.minTime > 0 ? (remaining / m.minTime) * 100 : minH;
-    $('timebar').style.width = `${Math.max(0, Math.min(100, bar))}%`;
-    document.querySelector('.timer')!.classList.toggle('urgent', minH < 40);
+    const timer = document.querySelector<HTMLElement>('.timer')!;
+    timer.classList.toggle('urgent', minH < 40);
+    timer.classList.toggle('storm', storm);
+    $('timelabel').textContent = storm ? (remaining > 0 ? (m.rain ? 'הסערה עוברת בעוד' : 'הדליפה נעצרת בעוד') : 'עבר! סיימו לנקות') : 'זמן';
+    $('timebar').style.width = `${storm ? Math.max(0, Math.min(100, (remaining / m.minTime) * 100)) : 0}%`;
 
     // Assets panel.
     const key = m.id + game.assets.length;
@@ -93,14 +96,22 @@ export class Hud {
       const el = box.children[i] as HTMLElement | undefined;
       if (!el) return;
       const known = a.cells.some((c) => game.grid.know[c] & KNOW_UNIVERSAL);
-      (el.querySelector('.now') as HTMLElement).textContent = known ? `pH ${a.pH.toFixed(1)}` : 'pH ?';
+      const hurting = a.health < 100 && (a.pH < a.lo || a.pH > a.hi);
+      const now = el.querySelector('.now') as HTMLElement;
+      now.textContent = known ? `pH ${a.pH.toFixed(1)}` : hurting ? '⚠ נפגע – מדדו!' : 'pH ?';
+      now.classList.toggle('alert', hurting);
       (el.querySelector('.hp i') as HTMLElement).style.width = `${a.health}%`;
       el.classList.toggle('low', a.health < 40);
     });
 
     // Mission + objective + tutorial.
     $('mtitle').textContent = `משימה ${m.num}: ${m.title}`;
-    $('mobj').textContent = game.objective();
+    const oi = game.objectiveInfo();
+    $('mobj').textContent = oi.main;
+    $('mchips').innerHTML =
+      game.status === 'play'
+        ? `<span class="${oi.bad ? 'bad' : ''}">מחוץ לטווח <bdi dir="ltr">${oi.bad}</bdi></span><span class="${oi.unknown ? 'unk' : ''}">לא נמדדו <bdi dir="ltr">${oi.unknown}</bdi></span>`
+        : '';
     const tut = game.tutorialText();
     const tutEl = $('tutorial');
     tutEl.hidden = !tut;
@@ -119,6 +130,13 @@ export class Hud {
     $('tankph').textContent = game.tankPH().toFixed(0);
     const frac = T.valve === 'water' ? T.water / L.water : T[T.valve] / (L[T.valve] || 1);
     $('tankfill').style.height = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+    const low = frac < 0.2;
+    tank.classList.toggle('low', low);
+    $('tanklow').hidden = !low;
+    if (frac < 0.15 && !this.lowWarned) {
+      this.lowWarned = true;
+      this.onLowTank?.();
+    } else if (frac > 0.3) this.lowWarned = false;
     const sb = $('strength');
     sb.querySelector('bdi')!.textContent = `×${T.strength}`;
     sb.classList.toggle('x10', T.strength === 10);
@@ -206,6 +224,9 @@ export class Hud {
   }
 
   // ---------- pH ruler: what the indicators say about the aimed ground ----------
+  lowWarned = false;
+  onLowTank: (() => void) | null = null;
+
   private updateRuler(game: Game) {
     const c = game.aim.cell;
     const g = game.grid;
@@ -220,13 +241,19 @@ export class Hud {
     const rm = $('rmark');
     const label = $('rulerlabel');
     const known = game.readingAt(c);
-    const target = `יעד כאן: pH ${band.lo}–${band.hi}`;
+    const target = `יעד pH ${band.lo}–${band.hi}`;
     if (!r) {
       rr.style.display = 'none';
       rm.style.display = 'none';
       label.textContent = `${target} · עוד לא נמדד`;
       return;
     }
+    const ghost = $('rghost');
+    const next = game.nextPuffPH();
+    if (next !== null && r && r.exact !== undefined && Math.abs(next - r.exact) > 0.02) {
+      ghost.style.display = 'block';
+      ghost.style.left = pct(next);
+    } else ghost.style.display = 'none';
     if (r.exact !== undefined) {
       rr.style.display = 'none';
       rm.style.display = 'block';
@@ -241,7 +268,7 @@ export class Hud {
       rr.style.display = 'block';
       rr.style.left = pct(r.lo);
       rr.style.width = `${((r.hi - r.lo) / 14) * 100}%`;
-      label.textContent = `${target} · ${known.text} – רק טווח, בלי מספר`;
+      label.textContent = `${target} · ${known.kind === 'litmus' ? 'לקמוס' : 'פנולפתלאין'}: רק טווח`;
     }
   }
 
@@ -306,6 +333,25 @@ export class Hud {
     // Assets in danger first.
     for (const a of game.assets) {
       if (a.health < 99 && (a.pH < a.lo || a.pH > a.hi)) out.push({ x: a.at[0], z: a.at[1], cls: 'danger', icon: '⚠', label: a.name });
+    }
+    // Nearest measured patch that is still out of its band.
+    {
+      let bb = -1;
+      let bdd = Infinity;
+      for (let c = 0; c < g.count; c++) {
+        if (!(g.know[c] & KNOW_UNIVERSAL) || g.inBand(c, game.mission.tol)) continue;
+        const [x, z] = g.center(c);
+        const d = Math.hypot(x - p.x, z - p.z);
+        if (d < bdd) {
+          bdd = d;
+          bb = c;
+        }
+      }
+      if (bb >= 0) {
+        const [x, z] = g.center(bb);
+        const acid = g.pH[bb] < g.band(bb).lo;
+        out.push({ x, z, cls: acid ? 'acidic' : 'basic', icon: acid ? '💧' : '🫧', label: `pH ${g.pH[bb].toFixed(1)}` });
+      }
     }
     // Nearest unmeasured suspect patch.
     let best = -1;

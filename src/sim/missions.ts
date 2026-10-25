@@ -390,7 +390,10 @@ export const MISSIONS: MissionDef[] = [
       { id: 'school', name: 'בית הספר', icon: 'school', lo: 6, hi: 8.5, decay: 2.5, cells: (g) => cellsOfKind(g, Kind.School), at: [42, 84] },
       { id: 'berries', name: 'אוכמניות', icon: 'berries', lo: 4.5, hi: 5.5, decay: 0.3, cells: (g) => cellsOfKind(g, Kind.Blueberry), at: [22.5, 45] },
     ],
-    wagons: [[34, 46]],
+    wagons: [
+      [34, 46],
+      [58, 74],
+    ],
     loadout: { ...STD, litmus: 6, phenol: 3, mist: 5, canister: 2, acid: 0.5, base: 0.5 },
     strength10: 'yes',
     hints: [],

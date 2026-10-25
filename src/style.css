@@ -1345,7 +1345,7 @@ body.reduced * {
 
 #title .logo {
   position: absolute;
-  left: 4vw;
+  left: 5vw;
   top: 6vh;
   max-width: 46vw;
   text-align: center;
@@ -1354,7 +1354,8 @@ body.reduced * {
 
 #title .logo h1 {
   margin: 0;
-  font-size: clamp(48px, 7vw, 104px);
+  white-space: nowrap;
+  font-size: clamp(44px, 6vw, 92px);
   font-weight: 800;
   line-height: 1.05;
   color: #fff;

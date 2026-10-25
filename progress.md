@@ -22,12 +22,14 @@ Brief: [docs/handoff/BUILD_HANDOFF.md](docs/handoff/BUILD_HANDOFF.md), [docs/han
 4. Real-input captures in `docs/captures/` via `scripts/capture.mjs`; comparison in `docs/VISUAL_REVIEW.md`.
 5. Independent science review: `docs/SCIENCE_REVIEW.md` (fixes listed in PLAYTEST.md).
 
+6. Round 2 ("make it perfect"): Tripo rounds 2–3 (farmer, walls, rocks, school, bushes, cypress, fish, house regen, lemon crate, lemons, anemones, daisies; ranger walk/spray/cheer/kneel clips). Fun/UX pass: mouse-look play flow, score/combo + restore bursts, pH ruler of indicator ranges with next-puff tick, guidance arrows, wilting spread, mist recharge, title/brief/result over the live valley, music, bloom, hills/clouds, flowing creek, visible storm, prop fading, phone layouts. Independent UX critic review ([docs/UX_REVIEW.md](docs/UX_REVIEW.md)) and fixes. Faster pH solver (warm-started Newton; tests 270 s → 16 s).
+
 ## Notes for whoever continues
 
 - Session was interrupted once mid-build; the lost `src/sim/game.ts` was rewritten and the visual helper resumed. No work was lost from git.
 - The Tripo budget was 6 models + 2 rig/animation jobs: used 6 models + 1 paid rig + 2 free preset animation retargets (counted literally that is 3 rig/animation operations). Credits: 245 by this crew (shared account).
-- No spray clip: the spray pose is procedural (`aimBone` in `src/main.ts`).
-- The Tripo house has two lavender fin artefacts on the roof (visible from some angles).
+- The ranger's Tripo `spray` clip is blended with a lighter procedural arm aim (`aimBone` in `src/main.ts`); the `run` clip's hips offset is pinned on load (`models.ts`).
+- The house was regenerated in round 2 (no roof artefacts).
 
 ## TODO / ideas
 

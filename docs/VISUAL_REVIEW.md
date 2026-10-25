@@ -37,3 +37,12 @@ Extra captures: [title](captures/00-title.png), [phenolphthalein in mission 3](c
 - Cone grass replaced by blade tufts; gem-like flowers replaced by stemmed blooms; terrace walls lowered (they blocked the camera in mission 3); olive model brightened.
 - Night head-lamp dimmed and cooled, indicator glow raised, fireflies added.
 - Gadget counts moved so they no longer overlap labels; badges de-duplicated on screen.
+
+
+## Round 2 (after "make it perfect")
+
+Captures in `captures/` were re-taken at 1672×941 after the round-2 changes (same script, real input). Changes against the mockups since round 1:
+
+- **Closer to the mockups:** real dry-stone walls, limestone rocks, a red-tile stone school, blueberry bushes with berries, cypresses and a rigged farmer (all Tripo) replace the primitive props; the spray is a solid jet with a splash; restored ground blooms with red anemones like the poppies in mockup 2; the night mission glows only where something is wrong, like mockup 4.
+- **Beyond the mockups:** a score/combo chip at the top centre, the pH ruler at the bottom centre (indicator ranges, target band, next-puff tick), off-screen guidance arrows, a goal-first objective with count chips, a visible storm front, and a title screen over the live valley.
+- **Still different:** the mockups' painterly detail density, the purple glowing outline around an overshoot patch (we show a ring burst and the purple wash instead), and the creek's waterfall in mockup 2.

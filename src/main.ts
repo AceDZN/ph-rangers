@@ -90,10 +90,11 @@ function buildWorld() {
     fx.reduced = settings.reduced;
     ranger = models.ranger();
     world.scene.add(ranger.root);
+    if (ranger.root.userData.wand) world.scene.add(ranger.root.userData.wand);
     if (ranger.clips.idle) ranger.clips.idle.play();
     headlamp = null;
     if (m.night) {
-      headlamp = new THREE.PointLight(0xfff0d0, 30, 22, 1.6);
+      headlamp = new THREE.PointLight(0xcfe0ff, 9, 14, 1.4);
       world.scene.add(headlamp);
     }
   } else fx!.clear();
@@ -504,6 +505,27 @@ function handleFx() {
 }
 
 let animT = 0;
+let aimW = 0;
+const qA = new THREE.Quaternion();
+const qB = new THREE.Quaternion();
+const vA = new THREE.Vector3();
+const vB = new THREE.Vector3();
+
+/** Rotate `bone` (in world space) so the direction to `child` points along `dir`, blended by w. */
+function aimBone(bone: THREE.Object3D | null, child: THREE.Object3D | null, dir: THREE.Vector3, w: number) {
+  if (!bone || !child || !bone.parent || w <= 0) return;
+  bone.updateWorldMatrix(true, true);
+  bone.getWorldPosition(vA);
+  child.getWorldPosition(vB);
+  const cur = vB.sub(vA).normalize();
+  qA.setFromUnitVectors(cur, dir.clone().normalize());
+  bone.getWorldQuaternion(qB);
+  const target = qA.multiply(qB);
+  const parentQ = new THREE.Quaternion();
+  bone.parent.getWorldQuaternion(parentQ);
+  const local = parentQ.invert().multiply(target);
+  bone.quaternion.slerp(local, w);
+}
 let birdT = 4;
 const tmpV = new THREE.Vector3();
 
@@ -523,6 +545,30 @@ function updateRanger(dt: number) {
     }
     ranger.mixer.update(dt);
     if (!(want in ranger.clips) && ranger.clips.idle && !ranger.clips.idle.isRunning()) ranger.clips.idle.play();
+    // Procedural aim pose: both arms reach forward toward the spray target.
+    const B = ranger.root.userData.bones as Record<string, THREE.Object3D | null>;
+    const wantAim = p.spraying || game.throws.length > 0 ? 1 : 0;
+    aimW += (wantAim - aimW) * Math.min(1, dt * 12);
+    const fwd = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
+    const right = new THREE.Vector3(-Math.cos(p.yaw), 0, Math.sin(p.yaw));
+    const ax = game.aim.x - p.x;
+    const az = game.aim.z - p.z;
+    const pitch = -Math.atan2(1.2, Math.max(2, Math.hypot(ax, az))) + 0.25;
+    const dir = fwd.clone().multiplyScalar(Math.cos(pitch)).add(new THREE.Vector3(0, Math.sin(pitch), 0));
+    if (aimW > 0.01 && B) {
+      aimBone(B.rArm, B.rFore, dir.clone().add(right.clone().multiplyScalar(-0.15)), aimW);
+      aimBone(B.rFore, B.rHand, dir, aimW);
+      aimBone(B.lArm, B.lFore, dir.clone().add(right.clone().multiplyScalar(0.45)), aimW);
+      aimBone(B.lFore, B.lHand, dir.clone().add(right.clone().multiplyScalar(0.25)), aimW);
+    }
+    const wand = ranger.root.userData.wand as THREE.Object3D | undefined;
+    if (wand && B?.rHand) {
+      B.rHand.updateWorldMatrix(true, false);
+      B.rHand.getWorldPosition(wand.position);
+      const wd = aimW > 0.5 ? dir : fwd.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, -0.8, 0)).normalize();
+      wand.lookAt(wand.position.clone().add(wd));
+      ranger.nozzle.position.copy(ranger.root.worldToLocal(wand.position.clone().add(wd.clone().multiplyScalar(0.68))));
+    }
   } else {
     const limbs = ranger.root.userData.limbs as THREE.Object3D[];
     const sw = moving ? Math.sin(animT * 11) * Math.min(1, p.speed / 5) * 0.8 : Math.sin(animT * 2) * 0.04;
@@ -675,6 +721,15 @@ window.advanceTime = (ms: number) => {
 };
 window.__phr = {
   game: () => game,
+  armDebug: () => {
+    const B = ranger?.root.userData.bones as Record<string, THREE.Object3D | null> | undefined;
+    if (!B?.rArm || !B.rHand) return null;
+    const a = new THREE.Vector3();
+    const h = new THREE.Vector3();
+    B.rArm.getWorldPosition(a);
+    B.rHand.getWorldPosition(h);
+    return { arm: a.toArray().map((x) => +x.toFixed(2)), hand: h.toArray().map((x) => +x.toFixed(2)), aimW };
+  },
   setCam: (yaw: number, pitch: number) => {
     camYaw = yaw;
     camPitch = pitch;
@@ -686,6 +741,7 @@ window.__phr = {
     mouseFree = { x: v.x, y: v.y, active: true };
   },
   startMission: (id: string) => {
+    keys.clear();
     game.load(id);
     buildWorld();
     setMode('play');

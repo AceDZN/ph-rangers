@@ -99,7 +99,7 @@ let camPitch = 0.45; // 0 = look far, 1 = look near
 let shake = 0;
 let pointerLocked = false;
 /** Pointer lock refused or unavailable: the cursor aims and right-drag turns the camera. */
-let freeMode = false;
+let freeMode = true;
 const testMode = new URLSearchParams(location.search).get('autopause') === '0';
 const finePointer = window.matchMedia?.('(pointer: fine)').matches ?? true;
 let mouseFree = { x: 0, y: 0, active: false };
@@ -256,11 +256,8 @@ function onKey(e: KeyboardEvent, down: boolean) {
       game.selectValve('water');
       break;
     case 'KeyQ':
-      game.cycleValve(-1);
-      break;
     case 'KeyE':
-      game.cycleValve(1);
-      break;
+      break; // camera turn, handled per frame
     case 'KeyX':
       game.toggleStrength();
       break;
@@ -297,8 +294,9 @@ document.addEventListener('visibilitychange', () => {
   if (autoPause && document.hidden && mode === 'play') setMode('paused');
 });
 
+/** Mouse capture is off: the cursor aims (what you point at is where it goes), right-drag turns the camera. */
 function wantsLock() {
-  return finePointer && !testMode && !touch.used && !freeMode;
+  return false && finePointer && !testMode && !touch.used && !freeMode;
 }
 
 function requestLock() {
@@ -328,6 +326,13 @@ window.addEventListener('mouseup', (e) => {
   if (e.button === 0) mouseDown = false;
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+let rightDrag = false;
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 2) rightDrag = true;
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 2) rightDrag = false;
+});
 document.addEventListener('pointerlockchange', () => {
   const was = pointerLocked;
   pointerLocked = document.pointerLockElement === canvas;
@@ -339,9 +344,13 @@ document.addEventListener('pointerlockerror', () => {
 });
 window.addEventListener('mousemove', (e) => {
   if (pointerLocked || (freeMode && e.buttons & 2)) {
-    camYaw -= e.movementX * 0.0026;
-    camPitch = Math.min(1, Math.max(0, camPitch + e.movementY * 0.0022));
+    camYaw -= e.movementX * 0.004;
+    camPitch = Math.min(1, Math.max(0, camPitch + e.movementY * 0.003));
+    return;
   }
+  // Only the game view aims; moving onto a HUD button must not re-aim the throw.
+  const t = e.target as HTMLElement | null;
+  if (t && t !== canvas && t.closest('button, .panel, .card, .ruler')) return;
   if (!pointerLocked) {
     const r = canvas.getBoundingClientRect();
     mouseFree = { x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1, active: true };
@@ -515,6 +524,8 @@ const MISSION_ICON: Record<string, string> = {
 };
 
 function nextMissionIndex() {
+  // Until mission 1 has really been finished on this device, Play always starts with the tutorial.
+  if (!(progress[MISSIONS[0].id] > 0)) return 0;
   const i = MISSIONS.findIndex((m) => !(progress[m.id] > 0));
   return i < 0 ? 0 : i;
 }
@@ -644,6 +655,7 @@ function handleFx() {
       if (!settings.reduced) shake = 0.35;
     } else if (e.type === 'inband') {
       audio.chime();
+      if (game.sprayLocked) hud.toast('בטווח! ✓ שחררו את הלחיצה', 'good');
     } else if (e.type === 'restored') {
       audio.restored(e.combo);
       // Life comes back: a bird answers.
@@ -881,14 +893,22 @@ function render(dt: number) {
   animT += dt;
   // Keyboard camera turn.
   if (mode === 'play') {
-    if (keys.has('ArrowLeft')) camYaw += dt * 2.2;
-    if (keys.has('ArrowRight')) camYaw -= dt * 2.2;
+    if (keys.has('ArrowLeft') || keys.has('KeyQ')) camYaw += dt * 2.2;
+    if (keys.has('ArrowRight') || keys.has('KeyE')) camYaw -= dt * 2.2;
     if (keys.has('PageUp')) camPitch = Math.max(0, camPitch - dt);
     if (keys.has('PageDown')) camPitch = Math.min(1, camPitch + dt);
     // Free-mouse mode: pushing the cursor toward a screen edge turns the camera.
-    if (freeMode && !pointerLocked && mouseFree.active && !manual && !touch.used) {
-      const ex = Math.abs(mouseFree.x);
-      if (ex > 0.85) camYaw -= Math.sign(mouseFree.x) * (ex - 0.85) * 6 * dt;
+    // The camera eases in behind the ranger while walking forward (not while spraying or turning by hand).
+    {
+      const p = game.player;
+      const fwd = keys.has('KeyW') || keys.has('ArrowUp') || touch.mz > 0.5;
+      if (fwd && p.speed > 2 && !p.spraying && !rightDrag) {
+        const heading = Math.atan2(p.vx, p.vz);
+        let d = heading - camYaw;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) < 1.1) camYaw += d * Math.min(1, dt * 1.6);
+      }
     }
     $('lockhint').hidden = !(wantsLock() && !pointerLocked);
     if (game.score !== lastScore) {
@@ -927,6 +947,20 @@ function render(dt: number) {
   } else audio.spraying(false, 'base', 1);
   fx.update(game, dt, !!game.mission.night);
   fx.showAim(mode === 'play');
+  {
+    const ti = game.tutorialStepInfo();
+    if (ti?.step.pointAt && mode === 'play') fx.pointer(ti.step.pointAt[0], ti.step.pointAt[1], true, animT);
+    else if (ti?.step.pointAtSpill && game.spill.length && mode === 'play') {
+      let sx = 0;
+      let sz = 0;
+      for (const c of game.spill) {
+        const [x, z] = game.grid.center(c);
+        sx += x;
+        sz += z;
+      }
+      fx.pointer(sx / game.spill.length, sz / game.spill.length, true, animT);
+    } else fx.pointer(0, 0, false, animT);
+  }
   // Ambient beds: rain under the storm, running water near the creek or pond.
   {
     const L = game.mission.layout;

@@ -27,6 +27,7 @@ interface BadgeEl {
 
 export class Hud {
   private assetsBuilt = '';
+  private focused = '';
   private badges: BadgeEl[] = [];
   private badgeData: Array<{ x: number; y: number; z: number; html: string; cls: string; bg: string }> = [];
   private badgeT = 0;
@@ -112,10 +113,26 @@ export class Hud {
       game.status === 'play'
         ? `<span class="${oi.bad ? 'bad' : ''}">מחוץ לטווח <bdi dir="ltr">${oi.bad}</bdi></span><span class="${oi.unknown ? 'unk' : ''}">לא נמדדו <bdi dir="ltr">${oi.unknown}</bdi></span>`
         : '';
-    const tut = game.tutorialText();
+    const ti = game.tutorialStepInfo();
     const tutEl = $('tutorial');
-    tutEl.hidden = !tut;
-    if (tut) tutEl.textContent = tut;
+    tutEl.hidden = !ti;
+    const focusSel = ti?.step.focus ?? '';
+    if (focusSel !== this.focused) {
+      if (this.focused) document.querySelectorAll(this.focused).forEach((el) => el.classList.remove('focus'));
+      if (focusSel) document.querySelectorAll(focusSel).forEach((el) => el.classList.add('focus'));
+      this.focused = focusSel;
+    }
+    if (ti) {
+      const key = `${m.id}:${ti.index}`;
+      if (tutEl.dataset.key !== key) {
+        tutEl.dataset.key = key;
+        const keys = (ti.step.keys ?? []).map((k) => `<kbd>${k}</kbd>`).join('');
+        tutEl.innerHTML = `<small>שלב ${ti.index + 1} מתוך ${ti.total}</small><b>${ti.step.title ?? ''}</b><span>${ti.step.text}</span>${keys ? `<div class="tkeys">${keys}</div>` : ''}`;
+        tutEl.classList.remove('step-in');
+        void tutEl.offsetWidth;
+        tutEl.classList.add('step-in');
+      }
+    }
     const hintEl = $('hintbox');
     hintEl.hidden = !game.hint;
     if (game.hint) hintEl.textContent = '💡 ' + game.hint;
@@ -262,7 +279,7 @@ export class Hud {
       const inb = r.exact >= band.lo && r.exact <= band.hi;
       // No advice on what to spray in the no-hint transfer mission.
       const advice = game.mission.noHints ? 'מחוץ לטווח' : r.exact < band.lo ? 'חומצי מדי – רססו בסיס' : 'בסיסי מדי – רססו חומצה';
-      label.textContent = `${target} · ${inb ? 'בטווח ✓' : advice}`;
+      label.textContent = `${target} · ${inb ? 'בטווח ✓' : advice}${game.nearTarget() ? ' · 🎯 זרם עדין' : ''}`;
     } else {
       rm.style.display = 'none';
       rr.style.display = 'block';

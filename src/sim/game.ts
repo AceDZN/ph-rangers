@@ -98,7 +98,7 @@ export interface LearnEvent {
 export const SPRAY_LPS = 0.8; // litres per second through the nozzle
 export const PACKET_DT = 0.05; // one puff
 export const SPRAY_RANGE = 15;
-export const GADGET_RADIUS = 9;
+export const GADGET_RADIUS = 11;
 const GRID_DT = 0.05;
 const WIN_HOLD = 1.5;
 /** Seconds for one universal-indicator mist charge to refill on its own. */
@@ -149,6 +149,10 @@ export class Game {
   private sprayWas = false;
   private sprayTimer = 0;
   private sprayHeld = 0;
+  /** True while the smart nozzle is trickling (for the HUD). */
+  gentle = false;
+  /** Set when a measured patch reached its range while spraying; cleared on release. */
+  sprayLocked = false;
   private gridAcc = 0;
   private throwCd = 0;
   private firstSpray = true;
@@ -175,10 +179,7 @@ export class Game {
     this.decoys = placed.decoys ?? [];
     // Reported ground: the spill patches, dust patches, leak points and their neighbours.
     const reported = [...this.spill, ...this.decoys, ...(m.sources ? m.sources(this.grid).map((x) => x.cell) : [])];
-    for (const c of reported) {
-      this.grid.suspect[c] = 1;
-      for (const n of this.grid.neighbours(c)) this.grid.suspect[n] = 1;
-    }
+    for (const c of reported) this.grid.suspect[c] = 1;
     this.grid.refreshPH(true);
     this.startPH = this.spill.map((c) => this.grid.pH[c]);
     this.t = 0;
@@ -397,18 +398,24 @@ export class Game {
   private spray(dt: number, held: boolean) {
     const pressed = held && !this.sprayWas;
     this.sprayWas = held;
-    this.player.spraying = held;
+    this.player.spraying = held && !this.sprayLocked;
     if (!held) {
       this.sprayTimer = 0;
+      this.sprayLocked = false;
       return;
     }
+    // Safety stop: after a measured patch reaches its range, wait for the button to be released.
+    if (this.sprayLocked) return;
     if (pressed) {
       this.sprayTimer = PACKET_DT * 2; // a tap always makes one puff
       this.sprayHeld = 0;
     } else this.sprayTimer += dt;
     this.sprayHeld += dt;
     // The nozzle opens gradually: half rate for the first 0.35 s so short holds stay gentle.
-    const interval = this.sprayHeld < 0.35 ? PACKET_DT * 2 : PACKET_DT;
+    let interval = this.sprayHeld < 0.35 ? PACKET_DT * 2 : PACKET_DT;
+    // Smart nozzle: on measured ground close to its target the stream drops to a trickle.
+    this.gentle = this.nearTarget();
+    if (this.gentle) interval = PACKET_DT * 6;
     while (this.sprayTimer >= interval - 1e-9) {
       this.sprayTimer -= interval;
       if (!this.emitPacket()) {
@@ -497,7 +504,13 @@ export class Game {
           this.lastOvershoot = this.t;
           this.fx.push({ type: 'overshoot', x: k.tx, z: k.tz, pH: after, dir });
         }
-      } else if (!wasIn && isIn && measured && this.t - this.lastInband > 0.6) {
+      } else if (!wasIn && isIn && measured) {
+        if (this.player.spraying && k.valve !== 'water') {
+          this.sprayLocked = true;
+          this.log('safety-stop', { cell: c, pH: after });
+        }
+      }
+      if (!wasIn && isIn && measured && this.t - this.lastInband > 0.6) {
         this.lastInband = this.t;
         this.fx.push({ type: 'inband', x: k.tx, z: k.tz });
       }
@@ -606,7 +619,7 @@ export class Game {
       a.pH = g.zonePH(a.cells);
       const out = a.pH < a.lo ? a.lo - a.pH : a.pH > a.hi ? a.pH - a.hi : 0;
       if (out > 0) {
-        a.health -= a.decay * (1 + Math.min(2, out)) * dt;
+        a.health -= a.decay * 0.6 * (1 + Math.min(2, out)) * dt;
         if (Math.floor(this.t * 2) !== Math.floor((this.t - dt) * 2)) this.fx.push({ type: 'asset-hurt', id: a.id });
       } else a.health = Math.min(100, a.health + 2 * dt);
       a.minHealth = Math.min(a.minHealth, a.health);
@@ -676,9 +689,18 @@ export class Game {
       const [cx, cz] = g.center(this.spill[0]);
       return Math.hypot(this.player.x - cx, this.player.z - cz) < 13;
     }
-    if (until === 'litmus-on-spill') return this.markers.some((m) => this.spill.includes(m.cell));
+    if (until === 'litmus-on-spill')
+      return this.markers.some((m) => this.spill.some((c) => {
+        const [x, z] = g.center(c);
+        return Math.hypot(x - m.x, z - m.z) < 4;
+      }));
     if (until === 'mist-on-spill') return this.spill.filter((c) => g.know[c] & KNOW_UNIVERSAL).length >= this.spill.length / 2;
     if (until === 'spill-rising') return g.zonePH(this.spill) > 4.6;
+    if (until === 'mist-any') return this.events.some((e) => e.action === 'mist');
+    if (until === 'phenol-any') return this.events.some((e) => e.action === 'phenol');
+    if (until === 'x10') return this.tank.strength10;
+    if (until === 'canisters-2') return this.events.filter((e) => e.action === 'canister').length >= 2;
+    if (until === 'restored-any') return this.score > 0;
     return this.status === 'won';
   }
 
@@ -692,6 +714,13 @@ export class Game {
         return;
       }
     }
+  }
+
+  /** The current tutorial step (or null), with its position in the list. */
+  tutorialStepInfo(): { step: NonNullable<MissionDef['tutorial']>[number]; index: number; total: number } | null {
+    const steps = this.mission.tutorial;
+    if (!steps || this.tutorialStep >= steps.length || this.status !== 'play') return null;
+    return { step: steps[this.tutorialStep], index: this.tutorialStep, total: steps.length };
   }
 
   tutorialText(): string {
@@ -760,6 +789,16 @@ export class Game {
       return { kind: 'litmus', text: r === 'acid' ? 'לקמוס: אדום – חומצי' : r === 'base' ? 'לקמוס: כחול – בסיסי' : 'לקמוס: אין שינוי ברור' };
     }
     return { kind: 'none', text: '?' };
+  }
+
+  /** Is the aimed cell measured and within about one pH unit of its band? */
+  nearTarget(): boolean {
+    const g = this.grid;
+    const c = this.aim.cell;
+    if (!(g.know[c] & KNOW_UNIVERSAL) || this.tank.valve === 'water') return false;
+    const b = g.band(c);
+    const p = g.pH[c];
+    return p > b.lo - 1.2 && p < b.hi + 1.2;
   }
 
   /** pH the aimed cell would have after one more puff of the selected liquid (if measured). */
@@ -848,6 +887,8 @@ export class Game {
       mistRecharge: +this.mistCharge.toFixed(2),
       unsurveyed: this.unsurveyed(),
       packetsInFlight: this.packets.length,
+      gentleNozzle: this.gentle,
+      safetyStop: this.sprayLocked,
     });
   }
 }

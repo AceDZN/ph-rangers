@@ -48,7 +48,19 @@ const cellsOf = (g: Game, k: Kind) => {
 };
 
 /** Cells currently out of band in the mission area, worst first. */
-export const problems = (g: Game) => g.contaminated();
+export const problems = (g: Game) => {
+  // Out-of-band ground, plus the cells of any protected place whose own target is missed
+  // (the HUD shows that asset in red, so a player would go and fix it).
+  const out = new Set(g.contaminated());
+  for (const a of g.assets) {
+    if (a.pH >= a.lo && a.pH <= a.hi) continue;
+    for (const c of a.cells) {
+      const p = g.grid.pH[c];
+      if (p < a.lo + 0.15 || p > a.hi - 0.15) out.add(c);
+    }
+  }
+  return [...out];
+};
 
 // ---------- intended solutions ----------
 

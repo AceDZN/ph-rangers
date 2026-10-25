@@ -34,11 +34,26 @@ export type TutorialCheck =
   | 'litmus-on-spill'
   | 'mist-on-spill'
   | 'spill-rising'
+  | 'mist-any'
+  | 'phenol-any'
+  | 'x10'
+  | 'canisters-2'
+  | 'restored-any'
   | 'won';
 
 export interface TutorialStep {
+  /** Short headline, then one line of what to do. */
   text: string;
   until: TutorialCheck;
+  title?: string;
+  /** Keys to show as chips. */
+  keys?: string[];
+  /** HUD element to make glow (CSS selector). */
+  focus?: string;
+  /** Point an arrow in the world at the spill. */
+  pointAtSpill?: boolean;
+  /** Point an arrow at a specific spot instead. */
+  pointAt?: [number, number];
 }
 
 export interface MissionDef {
@@ -119,11 +134,11 @@ export const MISSIONS: MissionDef[] = [
       'קרוב לסוף – לחיצות קצרות. כל לחיצה מוסיפה מעט, והמספר קופץ מהר ליד 7.',
     ],
     tutorial: [
-      { text: 'רוצו אל השלולית האפורה בשביל (WASD / ג׳ויסטיק).', until: 'near-spill' },
-      { text: 'זרקו נייר לקמוס על השלולית: כוונו אליה ולחצו R.', until: 'litmus-on-spill' },
-      { text: 'הלקמוס אדום – חומצה! עכשיו ערפל אוניברסלי (G) כדי לראות כמה חומצי.', until: 'mist-on-spill' },
-      { text: 'הסרגל למטה מראה pH 3 והמסגרת הלבנה היא היעד. בחרו בסיס (2) והחזיקו לחיצה כדי לרסס – האדים הם חום הנטרול.', until: 'spill-rising' },
-      { text: 'יפה! עכשיו לחיצות קצרות עד שכל השלולית בטווח 6–8 (ירוק). עברתם לכחול או סגול? רססו קצת חומצה (1).', until: 'won' },
+      { title: 'רוצו לשלולית', text: 'השלולית האפורה מסומנת בחץ. הולכים עם המקשים, מסובבים מצלמה עם קליק ימני (או Q/E).', keys: ['W', 'A', 'S', 'D'], until: 'near-spill', pointAtSpill: true },
+      { title: 'חומצי או בסיסי?', text: 'שימו את העכבר על השלולית ולחצו R – נזרוק עליה נייר לקמוס.', keys: ['R'], focus: '.gadget[data-gadget="litmus"]', until: 'litmus-on-spill', pointAtSpill: true },
+      { title: 'אדום = חומצי! אבל כמה?', text: 'עכבר על השלולית ולחצו G – ערפל אוניברסלי צובע ומראה מספר.', keys: ['G'], focus: '.gadget[data-gadget="mist"]', until: 'mist-on-spill', pointAtSpill: true },
+      { title: 'מרססים בסיס', text: 'חומצה מנטרלים בבסיס. בחרו בסיס (2) והחזיקו קליק שמאלי על השלולית.', keys: ['2', 'קליק'], focus: '.valve.base', until: 'spill-rising' },
+      { title: 'עד הירוק!', text: 'הסרגל למטה מראה את ה-pH. עצרו כשהוא במסגרת (6–8) – ליד היעד הזרם נהיה עדין. עברתם? קצת חומצה (1).', keys: ['קליק', '1'], focus: '#ruler', until: 'won' },
     ],
     idealChem: 0.1,
     winText: 'חומצה + בסיס ← מלח + מים. השלולית ירוקה, ונשאר רק קרום מלח דק.',
@@ -166,6 +181,11 @@ export const MISSIONS: MissionDef[] = [
     wagons: [[64, 44]],
     loadout: { ...STD, base: 0.6, acid: 0.3, mist: 3 },
     strength10: 'wagon',
+    tutorial: [
+      { title: 'מה זורם בנחל?', text: 'עכבר על הנחל המסומן ולחצו G – ערפל אוניברסלי.', keys: ['G'], focus: '.gadget[data-gadget="mist"]', until: 'mist-any', pointAtSpill: true },
+      { title: 'pH 2 – פי 10 חומצי מ-pH 3!', text: 'צריך פי 10 בסיס. תרכיז ×10 מחכה בעגלת האספקה – עמדו בטבעת הירוקה.', until: 'x10', pointAt: [64, 44] },
+      { title: 'עצרו את הגל!', text: 'X מחליף ×1 / ×10. ×10 על הגל החזק, ×1 לגימור עדין. מהרו לפני שהוא מגיע לדגים.', keys: ['X', 'קליק'], focus: '.strength', until: 'restored-any' },
+    ],
     hints: [
       'pH 2 חומצי פי 10 מ-pH 3. לכן צריך בערך פי 10 בסיס כדי לנטרל אותו.',
       'בעגלת האספקה יש תרכיז ×10 (מקש X). השתמשו בו על ה-pH 2, ובחוזק ×1 לגימור.',
@@ -218,6 +238,10 @@ export const MISSIONS: MissionDef[] = [
     wagons: [[58, 27]],
     loadout: { ...STD, litmus: 4, phenol: 3, mist: 3, acid: 0.4, base: 0.2 },
     strength10: 'no',
+    tutorial: [
+      { title: 'איזה אבק הוא סיד?', text: 'עכבר על המטע ולחצו F – פנולפתלאין צובע בוורוד רק בסיס.', keys: ['F'], focus: '.gadget[data-gadget="phenol"]', until: 'phenol-any', pointAtSpill: true },
+      { title: 'ורוד = בסיסי', text: 'בסיס מנטרלים בחומצה (1). ושימו לב: שקוף לא אומר תקין – פנולפתלאין לא מראה חומצות.', keys: ['1', 'קליק'], focus: '.valve.acid', until: 'restored-any' },
+    ],
     hints: [
       'זרקו פנולפתלאין (F) למרכז המטע: רק בסיס (מעל pH 8.2) ייצבע ורוד.',
       'בסיס מנטרלים בחומצה (שסתום 1). הוורוד נעלם כשה-pH יורד מתחת ל-8.2.',
@@ -289,6 +313,10 @@ export const MISSIONS: MissionDef[] = [
     wagons: [[62, 58]],
     loadout: { ...STD, litmus: 6, phenol: 2, mist: 5, acid: 0.5, base: 0.3 },
     strength10: 'no',
+    tutorial: [
+      { title: 'לכל מקום – יעד משלו', text: 'מדדו את הערוגות (G). המסגרת בסרגל מראה את היעד של המקום שאתם מכוונים אליו.', keys: ['G'], focus: '#ruler', until: 'mist-any', pointAt: [73.5, 51] },
+      { title: 'אוכמניות אוהבות חומצי', text: 'כאן היעד 4.5–5.5: רססו מעט חומצה (1) עד שהסמן נכנס למסגרת.', keys: ['1', 'קליק'], focus: '.valve.acid', until: 'restored-any' },
+    ],
     hints: [
       'האוכמניות ב-pH 7.4 – קרוב לנייטרלי (מעט בסיסי), אבל לא טוב להן. רססו חומצה בעדינות עד 4.5–5.5 (כתום).',
       'בכוורות: חומצה ← רססו בסיס עד ירוק. בחצר: חומר ניקוי בסיסי ← רססו חומצה.',
@@ -351,6 +379,9 @@ export const MISSIONS: MissionDef[] = [
     ],
     loadout: { ...STD, canister: 4, mist: 3, phenol: 2, acid: 0.4, base: 0.3 },
     strength10: 'yes',
+    tutorial: [
+      { title: 'הסערה בדרך!', text: 'זרקו קפסולת נוגד חומצה (T) על הכוורות ועל חצר בית הספר – לפני שהגשם מגיע.', keys: ['T'], focus: '.gadget[data-gadget="canister"]', until: 'canisters-2', pointAt: [45, 64] },
+    ],
     hints: [
       'זרקו קפסולת נוגד חומצה (T) על הכוורות ועל חצר בית הספר לפני שהגשם מגיע – היא לא תעבור את 8.5.',
       'הסיד מהמחצבה בסיסי: חומצה בחוזק ×1, בלחיצות.',

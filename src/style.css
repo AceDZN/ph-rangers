@@ -1850,7 +1850,7 @@ body.reduced * {
 }
 /* Toasts live in a band under the objective, not over the aim point. */
 .toast {
-  top: 132px;
+  top: 210px;
   left: 50%;
   font-size: 22px;
   padding: 6px 18px;
@@ -1867,7 +1867,7 @@ body.reduced * {
   direction: ltr;
 }
 .callout.hint {
-  top: 168px;
+  top: 380px;
   bottom: auto;
   right: 14px;
   transform: none;
@@ -2085,4 +2085,94 @@ body.result-open #hud {
     height: 36px;
     font-size: 24px;
   }
+}
+
+/* Point-and-click aiming: a clear crosshair over the game view. */
+#game {
+  cursor: crosshair;
+}
+
+/* ---------- tutorial card: big, centred, impossible to miss ---------- */
+#tutorial.callout {
+  top: 166px;
+  right: 14px;
+  left: auto;
+  transform: none;
+  max-width: min(400px, 42vw);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 22px;
+  border-width: 4px;
+  font-size: 18px;
+}
+#tutorial small {
+  color: #8d6e00;
+  font-weight: 700;
+  font-size: 13px;
+}
+#tutorial b {
+  font-size: 26px;
+  color: #3e2a00;
+}
+#tutorial .tkeys {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+  direction: ltr;
+}
+#tutorial kbd {
+  font-size: 18px;
+  background: #3e2a00;
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px 12px;
+  box-shadow: 0 3px 0 #000;
+}
+#tutorial.step-in {
+  animation: tut-in 0.45s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes tut-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+.focus {
+  position: relative;
+  z-index: 3;
+  animation: focus-glow 0.9s ease-in-out infinite !important;
+  border-color: #ffd54f !important;
+}
+@keyframes focus-glow {
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 213, 79, 0.95), 0 0 30px rgba(255, 213, 79, 0.95);
+    transform: scale(1.08);
+  }
+}
+#ruler.focus {
+  animation: ruler-glow 0.9s ease-in-out infinite !important;
+}
+@keyframes ruler-glow {
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 213, 79, 0.95), 0 0 30px rgba(255, 213, 79, 0.95);
+  }
+}
+@media (max-width: 640px) and (orientation: portrait) {
+  #tutorial.callout {
+    top: 190px;
+    right: 50%;
+    left: auto;
+    max-width: 92vw;
+    font-size: 14px;
+  }
+  #tutorial b {
+    font-size: 20px;
+  }
+}
+
+#tutorial[hidden] {
+  display: none !important;
 }

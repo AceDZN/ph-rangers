@@ -183,7 +183,10 @@ export class Bot {
       const need = g.E[c] - netForPH(mid, g.V[c], g.beta[c]);
       const valve: Valve = need > 0 ? 'base' : 'acid';
       const big = Math.abs(need) > 0.03 && allowX10 && this.game.tank.strength10;
-      const rate = big ? 0.08 : 0.008;
+      this.aimCell(c);
+      this.tick(1);
+      // The smart nozzle trickles at a quarter rate on measured ground near its target.
+      const rate = (big ? 0.08 : 0.008) * (this.game.nearTarget() ? 0.25 : 1);
       const secs = (Math.abs(need) * (big ? 0.85 : 0.7)) / rate;
       if (this.game.tank[valve] < 0.02) this.refill();
       this.aimCell(c);

@@ -445,6 +445,26 @@ export class Fx {
     this.aimRing.rotation.z += dt * 0.8;
   }
 
+  private pointerObj: THREE.Group | null = null;
+  /** A big bouncing arrow in the world pointing at a spot (tutorial guidance). */
+  pointer(x: number, z: number, on: boolean, t: number) {
+    if (!this.pointerObj) {
+      const g = new THREE.Group();
+      const m = new THREE.MeshStandardMaterial({ color: 0xffd54f, emissive: 0xffb300, emissiveIntensity: 0.6 });
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.2, 16), m);
+      head.rotation.x = Math.PI;
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.4, 12), m);
+      shaft.position.y = 1.3;
+      g.add(head, shaft);
+      this.scene.add(g);
+      this.pointerObj = g;
+    }
+    this.pointerObj.visible = on;
+    if (!on) return;
+    this.pointerObj.position.set(x, this.h(x, z) + 2.6 + Math.abs(Math.sin(t * 3)) * 0.8, z);
+    this.pointerObj.rotation.y = t * 1.5;
+  }
+
   /** Hide the aiming aids while menus are up. */
   showAim(on: boolean) {
     this.aimRing.visible = on;

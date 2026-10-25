@@ -53,7 +53,7 @@ vec4 ovC;`,
   ovC = texture2D(uOverlay, uv);
   vec4 st = texture2D(uState, uv);
   float g = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(g) * vec3(0.78, 0.78, 0.76), st.r * 0.85);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(g) * vec3(0.62, 0.62, 0.6), st.r * 0.9);
   diffuseColor.rgb = mix(diffuseColor.rgb, ovC.rgb, ovC.a);
   float n = fract(sin(dot(floor(vWPos.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.97, 0.94), step(0.78, n) * st.g * 0.85);
@@ -707,7 +707,7 @@ export class World {
       }
     };
     const soilSpills = game.spill.filter((c) => g.kind[c] !== Kind.Creek && g.kind[c] !== Kind.Blueberry && g.kind[c] !== Kind.Pond);
-    if (id === 'm1-lemon') puddle(soilSpills, 0xf2d64b, 0.55);
+    if (id === 'm1-lemon') puddle(soilSpills, 0xf5d000, 0.72);
     else if (id === 'm2-creek' || id === 'm6-night') puddle(soilSpills, 0xc8d36a, 0.45);
     else if (id === 'm4-blueberry') puddle(soilSpills.filter((c) => g.kind[c] === Kind.School), 0xb3e5fc, 0.5);
     if (id === 'm1-lemon') {

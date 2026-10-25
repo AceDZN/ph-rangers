@@ -208,9 +208,32 @@ export class Models {
   farmer(): THREE.Object3D {
     const ch = this.character('farmer', 1.65);
     if (ch) {
-      const want = Object.keys(ch.clips).find((k) => k.includes('wave')) ?? Object.keys(ch.clips).find((k) => k.includes('idle')) ?? Object.keys(ch.clips)[0];
-      ch.clips[want]?.play();
+      const idle = Object.entries(ch.clips).find(([k]) => k.includes('idle'))?.[1];
+      const waves = Object.entries(ch.clips)
+        .filter(([k]) => k.includes('wave') || k.includes('greet'))
+        .map(([, a]) => a);
+      for (const w of waves) {
+        w.setLoop(THREE.LoopOnce, 1);
+        w.clampWhenFinished = false;
+      }
+      idle?.play();
       ch.root.userData.mixer = ch.mixer;
+      // Every few seconds Rina waves or greets, then settles back to idle.
+      let timer = 3;
+      let k = 0;
+      ch.root.userData.tick = (dt: number) => {
+        timer -= dt;
+        if (timer <= 0 && waves.length) {
+          const w = waves[k++ % waves.length];
+          w.reset().fadeIn(0.3).play();
+          idle?.fadeOut(0.3);
+          timer = w.getClip().duration + 4;
+          setTimeout(() => {
+            w.fadeOut(0.4);
+            idle?.reset().fadeIn(0.4).play();
+          }, w.getClip().duration * 1000 - 300);
+        }
+      };
       return ch.root;
     }
     const still = this.clone('farmer', 1.65);
@@ -243,6 +266,23 @@ export class Models {
       const root = shadows(normalize(scene, 1.7)) as THREE.Group;
       const mixer = new THREE.AnimationMixer(scene);
       const clips: Record<string, THREE.AnimationAction> = {};
+      // Pin the hips' horizontal position to the idle pose in every clip: Tripo's run clip
+      // carries a constant forward offset that would put the body ahead of the ranger's origin.
+      const hipsTrack = (c: THREE.AnimationClip) => c.tracks.find((t) => /Hips\.position$/.test(t.name));
+      const idleClip = g.animations.find((c) => c.name.toLowerCase().includes('idle'));
+      const ref = idleClip ? hipsTrack(idleClip) : undefined;
+      if (ref) {
+        const rx = ref.values[0];
+        const rz = ref.values[2];
+        for (const c of g.animations) {
+          const t = hipsTrack(c);
+          if (!t || t === ref) continue;
+          for (let i = 0; i < t.values.length; i += 3) {
+            t.values[i] = rx;
+            t.values[i + 2] = rz;
+          }
+        }
+      }
       for (const clip of g.animations) {
         const name = clip.name.toLowerCase();
         const key = name.includes('idle')

@@ -94,6 +94,7 @@ export class World {
   private fireflies: THREE.Points | null = null;
   private bushModel = false;
   private mixers: THREE.AnimationMixer[] = [];
+  private ticks: Array<(dt: number) => void> = [];
   private clouds: THREE.Sprite[] = [];
   private waterNormal: THREE.Texture | null = null;
   private missionProps = new THREE.Group();
@@ -434,9 +435,8 @@ export class World {
     for (let i = 0; i < 6; i++) {
       const fm = this.models.fish();
       if (fm) {
-        // The Tripo fish faces +z; the swim code expects +x forward.
+        // The Tripo fish's head points +x, which is what the swim code expects.
         const f = new THREE.Group();
-        fm.rotation.y = Math.PI / 2;
         f.add(fm);
         f.userData.phase = rand(i + 40) * 10;
         this.fish.push(f);
@@ -507,7 +507,10 @@ export class World {
       };
       for (const w of L.walls) lay(w[0], w[1], 1);
       for (let z = T.z0 + 4; z < T.z1; z += 5) lay([T.x0, z], [T.x1, z], 0.75);
-      const wm = new THREE.InstancedMesh(wallModel.geometry, wallModel.material, segs.length);
+      // Tint the slightly yellow Tripo stone toward the mockups' grey-cream limestone.
+      const wmat = (wallModel.material as THREE.MeshStandardMaterial).clone();
+      wmat.color.setRGB(0.95, 0.94, 1.0);
+      const wm = new THREE.InstancedMesh(wallModel.geometry, wmat, segs.length);
       segs.forEach((m, i) => wm.setMatrixAt(i, m));
       wm.castShadow = true;
       wm.receiveShadow = true;
@@ -622,7 +625,7 @@ export class World {
     flag.position.set(5.8, 4, 2);
     const stripe = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.12), new THREE.MeshStandardMaterial({ color: 0x1e5bd8, side: THREE.DoubleSide }));
     stripe.position.set(5.8, 4.25, 2.01);
-    school.add(pole, flag, stripe);
+    if (!schoolModel) school.add(pole, flag, stripe);
     // Swing in the yard.
     const sw = new THREE.Group();
     const barM = new THREE.MeshStandardMaterial({ color: 0xd84315 });
@@ -658,7 +661,7 @@ export class World {
     this.bushes = new THREE.InstancedMesh(bushG, bushMat, cells.length);
     const grid = new Grid(L);
     cells.forEach(([x, z], i) => {
-      this.dummy.position.set(x, terrainHeight(L, x, z) + (this.bushModel ? -0.02 : 0.45), z);
+      this.dummy.position.set(x, terrainHeight(L, x, z) + (this.bushModel ? -0.15 : 0.45), z);
       this.dummy.scale.set(1, this.bushModel ? 0.9 + rand(i) * 0.3 : 0.85, 1);
       this.dummy.rotation.y = rand(i) * 3;
       this.dummy.updateMatrix();
@@ -892,6 +895,7 @@ export class World {
   setMission(game: Game, models: Models) {
     this.missionProps.clear();
     this.mixers = [];
+    this.ticks = [];
     this.wagons = [];
     const L = this.layout;
     for (const [x, z] of game.mission.wagons) {
@@ -995,6 +999,7 @@ export class World {
       rina.rotation.y = -Math.PI / 2;
       this.missionProps.add(rina);
       if (rina.userData.mixer) this.mixers.push(rina.userData.mixer as THREE.AnimationMixer);
+      if (rina.userData.tick) this.ticks.push(rina.userData.tick as (dt: number) => void);
     }
   }
 
@@ -1125,6 +1130,7 @@ export class World {
 
     for (const cl of this.clouds) cl.position.x += (cl.userData.drift as number) * dt;
     for (const mx of this.mixers) mx.update(dt);
+    for (const tk of this.ticks) tk(dt);
     if (this.waterNormal) {
       this.waterNormal.offset.x = t * 0.02;
       this.waterNormal.offset.y = t * 0.013;

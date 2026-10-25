@@ -1,0 +1,118 @@
+// Scripted strategies shared by the mission tests and the tuning script.
+
+import { Game } from '../src/sim/game';
+import { Kind } from '../src/sim/world';
+import { Bot } from './bot';
+
+export interface Outcome {
+  status: string;
+  reason: string;
+  t: number;
+  chem: number;
+  stars: number;
+  outOfBand: number;
+  assets: Record<string, { pH: number; health: number }>;
+  game: Game;
+}
+
+export function run(missionId: string, plan: (b: Bot, g: Game) => void, untilT = 240): Outcome {
+  const game = new Game(missionId);
+  const bot = new Bot(game);
+  plan(bot, game);
+  while (!bot.done && game.t < untilT) bot.wait(0.5);
+  const assets: Outcome['assets'] = {};
+  for (const a of game.assets) assets[a.id] = { pH: +a.pH.toFixed(2), health: Math.round(a.health) };
+  return {
+    status: game.status,
+    reason: game.failReason,
+    t: +game.t.toFixed(1),
+    chem: +game.stats.chem.toFixed(3),
+    stars: game.stars,
+    outOfBand: game.contaminated().length,
+    assets,
+    game,
+  };
+}
+
+const cellsOf = (g: Game, k: Kind) => {
+  const out: number[] = [];
+  for (let c = 0; c < g.grid.count; c++) if (g.grid.kind[c] === k) out.push(c);
+  return out;
+};
+
+/** Cells currently out of band in the mission area, worst first. */
+export const problems = (g: Game) => g.contaminated();
+
+// ---------- intended solutions ----------
+
+export const intended: Record<string, (b: Bot, g: Game) => void> = {
+  'm1-lemon': (b, g) => {
+    b.throw('litmus', g.spill[0]);
+    b.throw('mist', g.spill[0]);
+    for (let pass = 0; pass < 4 && !b.done; pass++) b.maintain(g.spill, 20);
+  },
+  'm2-creek': (b, g) => {
+    b.refill(); // ×10 concentrate at the wagon
+    b.throw('mist', g.spill[0]);
+    b.maintain(g.grid.creekCells, 70);
+    b.maintain(g.spill.slice(4), 20);
+    b.maintain(problems(g), 60);
+  },
+  'm3-quarry': (b, g) => {
+    b.throw('phenol', g.grid.idx(11, 7));
+    b.throw('phenol', g.grid.idx(14, 7));
+    const pink = g.spill;
+    b.maintain([...pink, g.grid.idx(9, 6)], 45);
+    while (!b.done && g.t < 120) b.maintain(problems(g), 5);
+  },
+  'm4-blueberry': (b, g) => {
+    const berries = cellsOf(g, Kind.Blueberry);
+    b.throw('mist', berries[5]);
+    b.maintain(berries, 60);
+    const hive = g.spill.slice(berries.length, berries.length + 3);
+    b.throw('mist', hive[0]);
+    b.maintain(hive, 30);
+    const school = g.spill.slice(berries.length + 3);
+    b.throw('mist', school[0]);
+    b.maintain(school, 30);
+    while (!b.done && g.t < 200) b.maintain(problems(g), 5);
+  },
+  'm5-storm': (b, g) => {
+    const hives = cellsOf(g, Kind.Hive);
+    const school = cellsOf(g, Kind.School);
+    b.throw('canister', hives[Math.floor(hives.length / 2)]);
+    b.throw('canister', school[Math.floor(school.length / 2)]);
+    b.maintain(g.spill, 40);
+    while (!b.done && g.t < 160) b.maintain(problems(g), 5);
+  },
+  'm6-night': (b, g) => {
+    b.throw('phenol', g.spill[1]);
+    b.maintain(g.grid.creekCells, 50);
+    b.maintain(g.spill, 120);
+    while (!b.done && g.t < 220) b.maintain(problems(g), 5);
+  },
+};
+
+// ---------- wrong / constant strategies ----------
+
+/** Spray `valve` on every spill cell for a while, ignoring what it is. */
+export function constant(valve: 'acid' | 'base' | 'water', seconds = 3) {
+  return (b: Bot, g: Game) => {
+    for (let pass = 0; pass < 3 && !b.done; pass++) {
+      for (const c of g.spill) {
+        if (b.done) break;
+        b.approach(c);
+        b.aimCell(c);
+        if (valve !== 'water' && g.tank[valve] < 0.02) b.refill();
+        if (valve === 'water' && g.tank.water < 2) b.refill();
+        b.aimCell(c);
+        b.spray(valve, seconds);
+      }
+    }
+  };
+}
+
+/** Bring every out-of-band spill cell to pH 7 (6.6–7.4), whatever lives there. */
+export const everythingTo7 = (b: Bot, g: Game) => {
+  for (let pass = 0; pass < 3 && !b.done; pass++) for (const c of g.spill) b.titrate(c, 6.6, 7.4, 15);
+};

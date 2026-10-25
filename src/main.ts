@@ -458,7 +458,8 @@ function showResult() {
   const firstLine = won
     ? 'כל פעם שחומצה ובסיס נפגשו נוצרו מלח ומים, והשתחרר חום (האדים).'
     : 'טעות היא חלק מהסיור: מדדו שוב עם אינדיקטור, בחרו שסתום לפי התוצאה, ורססו בלחיצות קצרות ליד היעד.';
-  $('rexplain').textContent = firstLine;
+  const salt = game.grid.ledger.salt;
+  $('rexplain').textContent = salt > 0 ? `${firstLine} שימו לב: החומצה והבסיס לא "נעלמו" – נוצרו מלח ומים, והמלח נשאר כקרום לבן דק על האדמה.` : firstLine;
   $('rstats').innerHTML = `זמן: <bdi dir="ltr">${game.t.toFixed(0)}s</bdi> · חומר שרוסס: <bdi dir="ltr">${game.stats.chem.toFixed(2)} mol</bdi> · מים: <bdi dir="ltr">${game.stats.water.toFixed(0)} L</bdi>${game.hintsUsed ? ` · רמזים: ${game.hintsUsed}` : ''}`;
   const hasNext = MISSIONS.findIndex((x) => x.id === m.id) < MISSIONS.length - 1;
   $('rnext').style.display = won && hasNext ? '' : 'none';
@@ -479,7 +480,7 @@ function handleFx() {
     if (e.type === 'fizz') audio.fizz(e.amount);
     else if (e.type === 'overshoot') {
       audio.boing();
-      hud.toast(e.pH > 7 ? 'יותר מדי בסיס!' : 'יותר מדי חומצה!', e.pH > 7 ? 'pinkish' : 'bad');
+      hud.toast(e.dir === 'base' ? 'יותר מדי בסיס – בסיסי מדי כאן!' : 'יותר מדי חומצה – חומצי מדי כאן!', e.dir === 'base' ? 'pinkish' : 'bad');
       if (!settings.reduced) shake = 0.35;
     } else if (e.type === 'inband') {
       audio.chime();

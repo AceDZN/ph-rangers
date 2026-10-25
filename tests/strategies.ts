@@ -15,7 +15,7 @@ export interface Outcome {
   game: Game;
 }
 
-export function run(missionId: string, plan: (b: Bot, g: Game) => void, untilT = 240): Outcome {
+export function run(missionId: string, plan: (b: Bot, g: Game) => void, untilT = 300): Outcome {
   const game = new Game(missionId);
   const bot = new Bot(game);
   plan(bot, game);
@@ -86,8 +86,9 @@ export const intended: Record<string, (b: Bot, g: Game) => void> = {
     while (!b.done && g.t < 160) b.maintain(problems(g), 5);
   },
   'm6-night': (b, g) => {
-    b.throw('phenol', g.spill[1]);
-    b.maintain(g.grid.creekCells, 50);
+    // Triage: the acid next to the hives first, then the base slug in the creek, then the rest.
+    b.maintain(g.spill.slice(4, 6), 30);
+    b.maintain(g.grid.creekCells.slice(10, 30), 50);
     b.maintain(g.spill, 120);
     while (!b.done && g.t < 220) b.maintain(problems(g), 5);
   },
@@ -111,6 +112,51 @@ export function constant(valve: 'acid' | 'base' | 'water', seconds = 3) {
     }
   };
 }
+
+/**
+ * An indicator-free ranger: never throws litmus, phenolphthalein or mist. Uses only what the
+ * game shows on unmeasured ground — grey "suspect" patches and the neutralization heat (fizz) —
+ * plus a learned rule of thumb: keep spraying while it fizzes, then add 8 small puffs.
+ * Blueberries get a fixed dose of acid (the brief says they like acidic soil).
+ */
+export const blind = (b: Bot, g: Game) => {
+  const fizzAt = (from: number, c: number) =>
+    g.fx.slice(from).some((e) => e.type === 'fizz' && g.grid.cellAt(e.x, e.z) === c);
+  for (let pass = 0; pass < 3 && !b.done; pass++) {
+    const cells: number[] = [];
+    for (let c = 0; c < g.grid.count; c++) if (g.grid.suspect[c]) cells.push(c);
+    for (const c of cells) {
+      if (b.done) break;
+      b.approach(c);
+      b.aimCell(c);
+      if (g.grid.band(c).hi < 7) {
+        if (g.tank.acid < 0.02) b.refill();
+        b.aimCell(c);
+        b.spray('acid', 1.2);
+        continue;
+      }
+      for (const valve of ['base', 'acid'] as const) {
+        if (g.tank[valve] < 0.02) b.refill();
+        b.aimCell(c);
+        let mark = g.fx.length;
+        b.spray(valve, 0.01);
+        b.wait(0.8);
+        if (!fizzAt(mark, c)) continue;
+        for (let i = 0; i < 40 && !b.done; i++) {
+          mark = g.fx.length;
+          if (g.tank[valve] < 0.02) b.refill();
+          b.aimCell(c);
+          b.spray(valve, 0.3);
+          b.wait(0.6);
+          if (!fizzAt(mark, c)) break;
+        }
+        for (let k = 0; k < 8; k++) b.spray(valve, 0.01);
+        b.wait(0.6);
+        break;
+      }
+    }
+  }
+};
 
 /** Bring every out-of-band spill cell to pH 7 (6.6–7.4), whatever lives there. */
 export const everythingTo7 = (b: Bot, g: Game) => {

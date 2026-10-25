@@ -629,7 +629,7 @@ bdi[dir='ltr'] {
 }
 
 .gi.canister {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 58'%3E%3Crect x='18' y='10' width='28' height='42' rx='8' fill='%23eceff1' stroke='%2390a4ae' stroke-width='3'/%3E%3Crect x='18' y='24' width='28' height='12' fill='%2364b5f6'/%3E%3Ctext x='32' y='34' font-size='9' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%23fff'%3EMg(OH)%3C/text%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 58'%3E%3Crect x='18' y='10' width='28' height='42' rx='8' fill='%23eceff1' stroke='%2390a4ae' stroke-width='3'/%3E%3Crect x='18' y='24' width='28' height='12' fill='%2364b5f6'/%3E%3Ctext x='32' y='34' font-size='9' font-family='Arial' font-weight='bold' text-anchor='middle' fill='%23fff'%3ECaCO%E2%82%83%3C/text%3E%3C/svg%3E");
 }
 
 /* ---------- world badges ---------- */

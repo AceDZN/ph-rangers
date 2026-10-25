@@ -13,3 +13,10 @@ for (const id of Object.keys(intended)) {
   }
   console.log('  ms', Date.now() - t0);
 }
+if (process.argv[3] === 'blind') {
+  const { blind } = await import('../tests/strategies');
+  for (const id of ['m1-lemon', 'm2-creek', 'm3-quarry', 'm4-blueberry', 'm5-storm', 'm6-night']) {
+    const o = run(id, blind);
+    console.log('BLIND', id, o.status, o.reason, 't=' + o.t, 'oob=' + o.outOfBand, JSON.stringify(o.assets));
+  }
+}

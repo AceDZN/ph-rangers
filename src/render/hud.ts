@@ -173,8 +173,8 @@ export class Hud {
   private computeBadges(game: Game) {
     const g = game.grid;
     const L = game.mission.layout;
-    const spill = new Set([...game.spill, ...game.decoys]);
-    const interesting = (c: number) => !g.inBand(c) || spill.has(c);
+    // Only ground the ranger has reason to look at; never keyed to the true pH.
+    const interesting = (c: number) => g.suspect[c] === 1;
     const seen = new Uint8Array(g.count);
     const out: typeof this.badgeData = [];
     const p = game.player;
@@ -219,7 +219,7 @@ export class Hud {
         out.push(
           pink
             ? { x, y, z, html: `<span class="bi base"></span>ורוד: בסיסי`, cls: 'small', bg: 'rgba(230,60,150,0.95)' }
-            : { x, y, z, html: `<span class="bi unknown"></span>שקוף: לא בסיסי`, cls: 'small', bg: 'rgba(40,50,70,0.9)' },
+            : { x, y, z, html: `<span class="bi unknown"></span>שקוף: מתחת ל-8.2`, cls: 'small', bg: 'rgba(40,50,70,0.9)' },
         );
       } else if (!cells.some((k) => g.know[k] & KNOW_LITMUS)) {
         out.push({ x, y, z, html: `<span class="bi unknown"></span>pH ?`, cls: '', bg: 'rgba(20,30,45,0.85)' });

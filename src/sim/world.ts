@@ -42,12 +42,12 @@ const SOIL: Record<Kind, { v0: number; beta: number }> = {
   [Kind.Soil]: { v0: 20, beta: 0.0015 },
   [Kind.Path]: { v0: 20, beta: 0.0015 },
   [Kind.Creek]: { v0: 20, beta: 0.0015 },
-  [Kind.Pond]: { v0: 400, beta: 0.03 },
+  [Kind.Pond]: { v0: 400, beta: 0.05 },
   [Kind.Blueberry]: { v0: 20, beta: 0.005 },
   [Kind.Hive]: { v0: 20, beta: 0.0015 },
-  [Kind.School]: { v0: 20, beta: 0.0015 },
+  [Kind.School]: { v0: 20, beta: 0.001 },
   [Kind.Quarry]: { v0: 20, beta: 0.0015 },
-  [Kind.Orchard]: { v0: 20, beta: 0.0015 },
+  [Kind.Orchard]: { v0: 20, beta: 0.0025 },
 };
 
 export interface Source {
@@ -79,7 +79,7 @@ const RUNOFF_RATE = 0.9; // fraction of excess water leaving per second
 const INFILTRATION = 0.12; // excess water soaking in per second
 const DIFFUSION = 0.012; // soil-to-soil mixing per second
 const CREEK_FLOW = 0.22; // fraction of a creek cell's contents moving downstream per second
-const WEAK_RATE = 0.012; // mol/s a weak-base canister can release per cell
+const WEAK_RATE = 0.003; // mol/s a weak-base canister can release per cell (slow)
 const WEAK_CAP = 8.5; // a weak base cannot push pH above this
 const HEAT_DECAY = 1.6;
 
@@ -102,6 +102,8 @@ export class Grid {
   readonly know: Uint8Array;
   readonly bloom: Float32Array;
   readonly scarred: Uint8Array;
+  /** Ground a ranger has reason to suspect (reported spills, sprayed cells). Never derived from pH. */
+  readonly suspect: Uint8Array;
   readonly creekCells: number[] = [];
   readonly pondCells: number[] = [];
   readonly ledger: Ledger = { acidIn: 0, baseIn: 0, weakIn: 0, salt: 0, waterIn: 0 };
@@ -129,6 +131,7 @@ export class Grid {
     this.know = new Uint8Array(c);
     this.bloom = new Float32Array(c);
     this.scarred = new Uint8Array(c);
+    this.suspect = new Uint8Array(c);
     this.dirty = new Uint8Array(c);
     this.classify();
     for (let i = 0; i < c; i++) {

@@ -4,7 +4,7 @@
 import { Strength, Valve, litmus, phClass, phenolphthalein, sprayExcess, sprayPH, universal } from './chem';
 import { Circle, colliders, terrainHeight } from './layout';
 import { Loadout, MISSIONS, MissionDef } from './missions';
-import { Grid, KNOW_LITMUS, KNOW_PHENOL, KNOW_UNIVERSAL } from './world';
+import { Grid, KNOW_LITMUS, KNOW_PHENOL, KNOW_UNIVERSAL, Kind } from './world';
 
 export type Gadget = 'litmus' | 'phenol' | 'mist' | 'canister';
 export type Status = 'play' | 'won' | 'failed';
@@ -70,7 +70,7 @@ export interface AssetState {
 export type FxEvent =
   | { type: 'land'; x: number; z: number; valve: Valve }
   | { type: 'fizz'; x: number; z: number; amount: number }
-  | { type: 'overshoot'; x: number; z: number; pH: number }
+  | { type: 'overshoot'; x: number; z: number; pH: number; dir: 'acid' | 'base' }
   | { type: 'inband'; x: number; z: number }
   | { type: 'gadget'; kind: Gadget; x: number; z: number }
   | { type: 'throw'; kind: Gadget }
@@ -150,9 +150,17 @@ export class Game {
     const m = MISSIONS.find((x) => x.id === missionId) ?? MISSIONS[0];
     this.mission = m;
     this.grid = new Grid(m.layout);
+    // Blueberry beds are naturally acidic peat (pH 5) unless a mission says otherwise.
+    for (let c = 0; c < this.grid.count; c++) if (this.grid.kind[c] === Kind.Blueberry) this.grid.setPH(c, 5);
     const placed = m.setup(this.grid);
     this.spill = placed.spill;
     this.decoys = placed.decoys ?? [];
+    // Reported ground: the spill patches, dust patches, leak points and their neighbours.
+    const reported = [...this.spill, ...this.decoys, ...(m.sources ? m.sources(this.grid).map((x) => x.cell) : [])];
+    for (const c of reported) {
+      this.grid.suspect[c] = 1;
+      for (const n of this.grid.neighbours(c)) this.grid.suspect[n] = 1;
+    }
     this.grid.refreshPH(true);
     this.t = 0;
     this.status = 'play';
@@ -420,18 +428,26 @@ export class Game {
       const before = g.pH[c];
       const salt0 = g.ledger.salt;
       g.inject(c, k.excess, k.litres);
+      g.suspect[c] = 1;
       g.refreshPH();
       const after = g.pH[c];
       const reacted = g.ledger.salt - salt0;
       this.fx.push({ type: 'land', x: k.tx, z: k.tz, valve: k.valve });
-      if (reacted > 0) this.fx.push({ type: 'fizz', x: k.tx, z: k.tz, amount: reacted });
+      // Neutralization heat is only noticeable while lots of acid or base is reacting
+      // (far from neutral); near the band it tells the ranger nothing.
+      if (reacted > 0 && (before < 4 || before > 10)) this.fx.push({ type: 'fizz', x: k.tx, z: k.tz, amount: reacted });
       const wasIn = before >= b.lo && before <= b.hi;
       const isIn = after >= b.lo && after <= b.hi;
-      if (wasIn && !isIn && k.valve !== 'water' && this.t - this.lastOvershoot > 1.2) {
-        this.lastOvershoot = this.t;
-        this.fx.push({ type: 'overshoot', x: k.tx, z: k.tz, pH: after });
+      // Only measured ground (universal indicator) can tell the ranger "in band" or "overshot".
+      const measured = (g.know[c] & KNOW_UNIVERSAL) !== 0;
+      if (wasIn && !isIn && k.valve !== 'water') {
+        const dir = after > b.hi ? 'base' : 'acid';
         this.log('overshoot', { cell: c, pH: after, value: k.valve });
-      } else if (!wasIn && isIn && this.t - this.lastInband > 0.6) {
+        if (measured && this.t - this.lastOvershoot > 1.2) {
+          this.lastOvershoot = this.t;
+          this.fx.push({ type: 'overshoot', x: k.tx, z: k.tz, pH: after, dir });
+        }
+      } else if (!wasIn && isIn && measured && this.t - this.lastInband > 0.6) {
         this.lastInband = this.t;
         this.fx.push({ type: 'inband', x: k.tx, z: k.tz });
       }
@@ -595,9 +611,21 @@ export class Game {
   objective(): string {
     if (this.status === 'won') return 'המשימה הושלמה!';
     if (this.status === 'failed') return 'המשימה נכשלה – נסו שוב';
-    const left = this.contaminated().length;
+    // Only what the ranger could know: measured cells, unmeasured suspect ground, assets in trouble.
+    const g = this.grid;
+    let bad = 0;
+    let unknown = 0;
+    for (let c = 0; c < g.count; c++) {
+      if (g.know[c] & KNOW_UNIVERSAL) {
+        if (!g.inBand(c, this.mission.tol)) bad++;
+      } else if (g.suspect[c]) unknown++;
+    }
+    const danger = this.assets.filter((a) => a.health < 100 && (a.pH < a.lo || a.pH > a.hi)).length;
     const wait = this.mission.minTime > 0 && this.t < this.mission.minTime ? ` · עוד ${Math.ceil(this.mission.minTime - this.t)} שנ׳` : '';
-    return left ? `אזורים מחוץ לטווח: ${left}${wait}` : `מחזיקים יציב...${wait}`;
+    if (this.holdT > 0) return `מחזיקים יציב...${wait}`;
+    const parts = [`נמדדו מחוץ לטווח: ${bad}`, `לא נמדדו: ${unknown}`];
+    if (danger) parts.push(`בסכנה: ${danger}`);
+    return parts.join(' · ') + wait;
   }
 
   private log(action: string, extra: Partial<LearnEvent> = {}) {
@@ -622,7 +650,7 @@ export class Game {
     if (k & KNOW_UNIVERSAL) return { kind: 'universal', pH: p, text: `pH ${p.toFixed(1)}` };
     if (k & KNOW_PHENOL) {
       const r = phenolphthalein(p);
-      return { kind: 'phenol', text: r === 'colorless' ? 'פנולפתלאין: שקוף (לא בסיסי)' : 'פנולפתלאין: ורוד – בסיסי' };
+      return { kind: 'phenol', text: r === 'colorless' ? 'פנולפתלאין: שקוף (pH מתחת ל-8.2)' : 'פנולפתלאין: ורוד – בסיסי (מעל 8.2)' };
     }
     if (k & KNOW_LITMUS) {
       const r = litmus(p);

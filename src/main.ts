@@ -656,10 +656,7 @@ function handleFx() {
       audio.win();
       celebrateT = 4;
     }
-    else if (e.type === 'failed') {
-      audio.fail();
-      sadT = 6;
-    }
+    else if (e.type === 'failed') audio.fail();
   }
   fx?.handle(game);
   game.fx.length = 0;
@@ -755,11 +752,13 @@ function updateRanger(dt: number) {
     const az = game.aim.z - p.z;
     const pitch = -Math.atan2(1.1, Math.max(2, Math.hypot(ax, az))) + 0.04;
     const dir = fwd.clone().multiplyScalar(Math.cos(pitch)).add(new THREE.Vector3(0, Math.sin(pitch), 0));
-    if (aimW > 0.01 && B) {
-      aimBone(B.rArm, B.rFore, dir.clone().add(right.clone().multiplyScalar(-0.15)), aimW);
-      aimBone(B.rFore, B.rHand, dir, aimW);
-      aimBone(B.lArm, B.lFore, dir.clone().add(right.clone().multiplyScalar(0.45)), aimW);
-      aimBone(B.lFore, B.lHand, dir.clone().add(right.clone().multiplyScalar(0.25)), aimW);
+    // With Tripo's two-hand spray clip the arms are already forward; only nudge them toward the target.
+    const aw = ranger.clips.spray ? aimW * 0.5 : aimW;
+    if (aw > 0.01 && B) {
+      aimBone(B.rArm, B.rFore, dir.clone().add(right.clone().multiplyScalar(-0.15)), aw);
+      aimBone(B.rFore, B.rHand, dir, aw);
+      aimBone(B.lArm, B.lFore, dir.clone().add(right.clone().multiplyScalar(0.45)), aw);
+      aimBone(B.lFore, B.lHand, dir.clone().add(right.clone().multiplyScalar(0.25)), aw);
     }
     const wand = ranger.root.userData.wand as THREE.Object3D | undefined;
     if (wand && B?.rHand) {

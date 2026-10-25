@@ -78,7 +78,7 @@ export interface Ledger {
 const RUNOFF_RATE = 0.9; // fraction of excess water leaving per second
 const INFILTRATION = 0.12; // excess water soaking in per second
 const DIFFUSION = 0.012; // soil-to-soil mixing per second
-const CREEK_FLOW = 0.22; // fraction of a creek cell's contents moving downstream per second
+const CREEK_FLOW = 0.4; // fraction of a creek cell's contents moving downstream per second
 const WEAK_RATE = 0.003; // mol/s a weak-base canister can release per cell (slow)
 const WEAK_CAP = 8.5; // a weak base cannot push pH above this
 const HEAT_DECAY = 1.6;

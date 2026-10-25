@@ -40,7 +40,7 @@ describe('mission 1 — lemon spill', () => {
 });
 
 describe('mission 2 — the ×10 rule through play', () => {
-  it('the same 3 s of ×1 base fixes the pH 3 puddle but barely moves the pH 2 creek', () => {
+  it('the same 3 s of ×1 base fixes the pH 3 puddle but removes under 10% of the pH 2 creek wave', () => {
     const game = new Game('m2-creek');
     const bot = new Bot(game);
     const bank = game.spill[4];
@@ -50,13 +50,17 @@ describe('mission 2 — the ×10 rule through play', () => {
     bot.spray('base', 3);
     bot.wait(0.8);
     expect(game.grid.pH[bank]).toBeGreaterThan(5.5);
-    const before = game.grid.pH[creek];
+    // The creek flows, so judge the whole acid wave (creek + pond), not one cell.
+    const g = game.grid;
+    const waveAcid = () => [...g.creekCells, ...g.pondCells].reduce((sum, c) => sum + g.E[c], 0);
+    const before = waveAcid();
     bot.approach(creek);
     bot.aimCell(creek);
     bot.spray('base', 3);
     bot.wait(0.8);
-    expect(game.grid.pH[creek] - before).toBeLessThan(0.5);
-    expect(game.grid.pH[creek]).toBeLessThan(3);
+    const removed = (before - waveAcid()) / before;
+    expect(removed).toBeGreaterThan(0);
+    expect(removed).toBeLessThan(0.1); // the same spray that fixed the puddle removes < 10% of the pH 2 wave
   });
 
   it('×1 base only or water only never wins (acid reaches the fish); too much base kills them', () => {

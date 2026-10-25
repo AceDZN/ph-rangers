@@ -1644,3 +1644,123 @@ body.reduced * {
   font-size: 15px;
   color: #10202e;
 }
+
+/* ---------- phone portrait: columns at the sides, ruler on top, thumbs at the bottom ---------- */
+@media (max-width: 640px) and (orientation: portrait) {
+  .tl {
+    top: 8px;
+    left: 8px;
+    gap: 6px;
+  }
+  .mission {
+    top: 8px;
+    right: 8px;
+    max-width: 56vw;
+  }
+  .topbtns {
+    top: auto;
+    bottom: 128px;
+    right: 50%;
+    transform: translateX(50%);
+  }
+  .callout {
+    top: 172px;
+    right: 8px;
+    left: 8px;
+    max-width: none;
+  }
+  .ruler {
+    top: 112px;
+    bottom: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    transform: none;
+  }
+  .rends {
+    display: none;
+  }
+  .score {
+    top: auto;
+    bottom: 26px;
+    font-size: 18px;
+    padding: 2px 12px;
+  }
+  .br {
+    right: 8px;
+    bottom: 140px;
+    gap: 6px;
+  }
+  .tank {
+    width: 58px;
+    height: 84px;
+    margin: 0;
+    border-radius: 18px;
+  }
+  .tank-ph {
+    top: 8px;
+  }
+  .tank-ph small {
+    font-size: 11px;
+  }
+  .tank-ph bdi {
+    font-size: 22px;
+  }
+  .strength {
+    font-size: 12px;
+    padding: 0 6px;
+    bottom: 4px;
+  }
+  .valves {
+    flex-direction: column;
+    padding: 6px;
+    gap: 6px;
+  }
+  .valve {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    padding-top: 4px;
+  }
+  .valve .vi {
+    width: 40px;
+    height: 40px;
+  }
+  .gadgets {
+    left: 8px;
+    bottom: 140px;
+    flex-direction: column;
+    padding: 6px;
+    gap: 6px;
+  }
+  .gadget {
+    width: 52px;
+    height: 52px;
+    padding-top: 2px;
+  }
+  .gi {
+    width: 40px;
+    height: 34px;
+  }
+  .gadget .cnt {
+    font-size: 13px;
+    top: auto;
+    bottom: 0;
+    right: 3px;
+  }
+  #stick {
+    left: 14px;
+    bottom: 14px;
+    width: 112px;
+    height: 112px;
+  }
+  #tspray {
+    right: 14px;
+    bottom: 18px;
+    width: 96px;
+    height: 96px;
+  }
+  .badge {
+    font-size: 15px;
+  }
+}

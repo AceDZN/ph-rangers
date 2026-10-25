@@ -622,6 +622,11 @@ function render(dt: number) {
     if (keys.has('ArrowRight')) camYaw -= dt * 2.2;
     if (keys.has('PageUp')) camPitch = Math.max(0, camPitch - dt);
     if (keys.has('PageDown')) camPitch = Math.min(1, camPitch + dt);
+    // Free-mouse mode: pushing the cursor toward a screen edge turns the camera.
+    if (!pointerLocked && mouseFree.active && !manual && !touch.used) {
+      const ex = Math.abs(mouseFree.x);
+      if (ex > 0.72) camYaw -= Math.sign(mouseFree.x) * (ex - 0.72) * 6 * dt;
+    }
   }
   updateRanger(dt);
   updateCamera(dt);
@@ -736,6 +741,11 @@ window.__phr = {
   },
   keys,
   setMode,
+  project: (x: number, z: number) => {
+    const v = new THREE.Vector3(x, terrainHeight(game.mission.layout, x, z), z).project(camera);
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+  },
   aimWorld: (x: number, z: number) => {
     const v = new THREE.Vector3(x, terrainHeight(game.mission.layout, x, z), z).project(camera);
     mouseFree = { x: v.x, y: v.y, active: true };

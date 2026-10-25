@@ -579,7 +579,11 @@ export class World {
     tuftG.computeVertexNormals();
     const N = 14000;
     const tufts = new THREE.InstancedMesh(tuftG, new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide }), N);
-    const flowerG = new THREE.IcosahedronGeometry(0.07, 0);
+    const fh = new THREE.CylinderGeometry(0.07, 0.05, 0.02, 6);
+    fh.translate(0, 0.26, 0);
+    const fs = new THREE.CylinderGeometry(0.008, 0.008, 0.26, 3);
+    fs.translate(0, 0.13, 0);
+    const flowerG = mergeGeos(fh, fs);
     const flowers = new THREE.InstancedMesh(flowerG, new THREE.MeshStandardMaterial({ roughness: 0.8 }), 1500);
     const col = new THREE.Color();
     const fcols = [0xffffff, 0xffe066, 0xe53935, 0xf8bbd0];
@@ -602,7 +606,7 @@ export class World {
       tufts.setColorAt(n, col);
       n++;
       if (fn < 1500 && rand(i + 11) < 0.13) {
-        this.dummy.position.y += 0.35;
+        this.dummy.rotation.set(0, 0, 0);
         this.dummy.scale.setScalar(0.8 + rand(i + 13) * 0.6);
         this.dummy.updateMatrix();
         flowers.setMatrixAt(fn, this.dummy.matrix);

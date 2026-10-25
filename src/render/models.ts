@@ -68,15 +68,35 @@ export class Models {
     );
   }
 
-  private clone(name: string, h: number): THREE.Group | null {
+  private clone(name: string, h: number, rollX = 0): THREE.Group | null {
     const g = this.gltf[name];
     if (!g) return null;
-    return shadows(normalize(g.scene.clone(true), h)) as THREE.Group;
+    const sc = g.scene.clone(true);
+    if (rollX) {
+      // Wrap so the roll happens before normalizing (feet back on the ground).
+      const w = new THREE.Group();
+      sc.rotation.x = rollX;
+      w.add(sc);
+      w.updateMatrixWorld(true);
+      return shadows(normalize(w, h)) as THREE.Group;
+    }
+    return shadows(normalize(sc, h)) as THREE.Group;
   }
 
   olive(): THREE.Object3D {
-    const m = this.clone('olive', 4.2);
-    if (m) return m;
+    const m = this.clone('olive', 3.6);
+    if (m) {
+      // Tripo's baked albedo is dark under our sun; lift it toward the mockups' sage green.
+      m.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+          mat.color.setRGB(1.7, 1.75, 1.5);
+          mesh.material = mat;
+        }
+      });
+      return m;
+    }
     const g = new THREE.Group();
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 1.8, 7), new THREE.MeshStandardMaterial({ color: 0x6d5a45, roughness: 1 }));
     trunk.position.y = 0.9;
@@ -104,7 +124,8 @@ export class Models {
   }
 
   truck(): THREE.Object3D {
-    const m = this.clone('truck', 2.6);
+    // Tripo made it upright; the story needs it overturned on its side.
+    const m = this.clone('truck', 2.2, Math.PI / 2);
     if (m) return m;
     const g = new THREE.Group();
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 5, 16), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
@@ -182,6 +203,27 @@ export class Models {
       const nozzle = new THREE.Object3D();
       nozzle.position.set(0.35, 1.05, 0.55);
       root.add(nozzle);
+      const bone = (n: string) => scene.getObjectByName(`mixamorig:${n}`) ?? scene.getObjectByName(`mixamorig${n}`) ?? null;
+      root.userData.bones = {
+        rArm: bone('RightArm'),
+        rFore: bone('RightForeArm'),
+        rHand: bone('RightHand'),
+        lArm: bone('LeftArm'),
+        lFore: bone('LeftForeArm'),
+        lHand: bone('LeftHand'),
+        spine: bone('Spine2'),
+      };
+      // Spray wand held in the right hand (positioned every frame).
+      const wand = new THREE.Group();
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.62, 8), new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.4 }));
+      tube.rotation.x = Math.PI / 2;
+      tube.position.z = 0.31;
+      const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.08, 10), new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 0.6, roughness: 0.3 }));
+      tip.rotation.x = Math.PI / 2;
+      tip.position.z = 0.64;
+      wand.add(tube, tip);
+      shadows(wand);
+      root.userData.wand = wand;
       return { root, mixer, clips, nozzle, tripo: true };
     }
     return proceduralRanger();

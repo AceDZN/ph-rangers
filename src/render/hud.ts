@@ -233,10 +233,19 @@ export class Hud {
       out.push({ x: mk.x, y: terrainHeight(L, mk.x, mk.z) + 1.5, z: mk.z, html: text, cls: 'small', bg });
     }
     out.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
-    this.badgeData = out.slice(0, 12);
+    // Keep the screen readable: a few unknown markers, nearest first.
+    let unknown = 0;
+    this.badgeData = out
+      .filter((b) => {
+        if (!b.html.includes('pH ?')) return true;
+        unknown++;
+        return unknown <= 3 && Math.hypot(b.x - p.x, b.z - p.z) < 30;
+      })
+      .slice(0, 8);
   }
 
   private placeBadges(camera: THREE.Camera, w: number, h: number) {
+    const placed: Array<[number, number]> = [];
     const host = $('badges');
     while (this.badges.length < this.badgeData.length) {
       const el = document.createElement('div');
@@ -255,6 +264,13 @@ export class Hud {
         b.el.style.display = 'none';
         return;
       }
+      const sx = ((this.v.x + 1) / 2) * w;
+      const sy = ((1 - this.v.y) / 2) * h;
+      if (placed.some(([px, py]) => Math.abs(px - sx) < 110 && Math.abs(py - sy) < 34)) {
+        b.el.style.display = 'none';
+        return;
+      }
+      placed.push([sx, sy]);
       b.el.style.display = '';
       if (b.el.dataset.html !== d.html) {
         b.el.innerHTML = d.html;

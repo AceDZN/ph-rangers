@@ -8,6 +8,18 @@ import { Layout, distToPolyline, inRect, pondLevel, terrainHeight } from '../sim
 import { Grid, KNOW_LITMUS, KNOW_PHENOL, KNOW_UNIVERSAL, Kind } from '../sim/world';
 import { Models } from './models';
 
+/** Merge two non-indexed copies of geometries into one (positions + normals only). */
+function mergeGeos(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
+  const A = a.toNonIndexed();
+  const B = b.toNonIndexed();
+  const pos = new Float32Array([...(A.attributes.position.array as Float32Array), ...(B.attributes.position.array as Float32Array)]);
+  const nor = new Float32Array([...(A.attributes.normal.array as Float32Array), ...(B.attributes.normal.array as Float32Array)]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return g;
+}
+
 const rand = (s: number) => {
   const x = Math.sin(s * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
@@ -78,6 +90,7 @@ export class World {
   private hiveCenters: THREE.Vector3[] = [];
   private dummy = new THREE.Object3D();
   private propGroup = new THREE.Group();
+  private fireflies: THREE.Points | null = null;
   private missionProps = new THREE.Group();
   private wagons: THREE.Object3D[] = [];
   night: boolean;
@@ -101,7 +114,7 @@ export class World {
       uOverlay: { value: this.overlay },
       uState: { value: this.state },
       uSize: { value: layout.size },
-      uGlow: { value: night ? 0.95 : 0.12 },
+      uGlow: { value: night ? 1.5 : 0.12 },
       uTime: { value: 0 },
     };
 
@@ -109,9 +122,9 @@ export class World {
     const sky = night ? new THREE.Color(0x0b1430) : new THREE.Color(0x9fd2f2);
     this.scene.background = sky;
     this.scene.fog = new THREE.Fog(night ? 0x0b1430 : 0xb9dcef, night ? 30 : 70, night ? 120 : 210);
-    this.hemi = new THREE.HemisphereLight(night ? 0x4060a0 : 0xc4e2ff, night ? 0x101820 : 0x6a5634, night ? 0.55 : 1.0);
+    this.hemi = new THREE.HemisphereLight(night ? 0x4060a0 : 0xc4e2ff, night ? 0x101820 : 0x6a5634, night ? 0.4 : 1.0);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(night ? 0x9fb4ff : 0xffe6bf, night ? 0.55 : 2.3);
+    this.sun = new THREE.DirectionalLight(night ? 0x9fb4ff : 0xffe6bf, night ? 0.45 : 2.3);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
@@ -135,8 +148,13 @@ export class World {
     this.buildGrass();
 
     // Flowers that bloom on restored cells.
-    const fg = new THREE.IcosahedronGeometry(0.16, 0);
-    const fm = new THREE.MeshStandardMaterial({ vertexColors: false, roughness: 0.7 });
+    // A bloom = a small flat flower head on a stem.
+    const head = new THREE.CylinderGeometry(0.13, 0.1, 0.03, 7);
+    head.translate(0, 0.32, 0);
+    const stem = new THREE.CylinderGeometry(0.012, 0.012, 0.32, 3);
+    stem.translate(0, 0.16, 0);
+    const fg = mergeGeos(head, stem);
+    const fm = new THREE.MeshStandardMaterial({ roughness: 0.7 });
     const perCell = 7;
     this.flowers = new THREE.InstancedMesh(fg, fm, n * n * perCell);
     this.flowers.count = 0;
@@ -155,6 +173,21 @@ export class World {
     this.flowers.count = this.flowerCells.length;
     this.scene.add(this.flowers);
 
+    // Fireflies at night.
+    if (night) {
+      const fp = new Float32Array(260 * 3);
+      for (let i = 0; i < 260; i++) {
+        const x = rand(i * 3.1) * layout.size;
+        const z = rand(i * 5.7) * layout.size;
+        fp[i * 3] = x;
+        fp[i * 3 + 1] = terrainHeight(layout, x, z) + 0.5 + rand(i) * 2;
+        fp[i * 3 + 2] = z;
+      }
+      const fgeo = new THREE.BufferGeometry();
+      fgeo.setAttribute('position', new THREE.BufferAttribute(fp, 3));
+      this.fireflies = new THREE.Points(fgeo, new THREE.PointsMaterial({ color: 0xfff176, size: 0.14, transparent: true, opacity: 0.9 }));
+      this.scene.add(this.fireflies);
+    }
     // Bees.
     const beeCount = 90;
     const bp = new Float32Array(beeCount * 3);
@@ -378,25 +411,25 @@ export class World {
     // Stone walls.
     const stoneG = new THREE.DodecahedronGeometry(0.42, 0);
     const walls: THREE.Matrix4[] = [];
-    const addWall = (a: readonly [number, number], b: readonly [number, number]) => {
+    const addWall = (a: readonly [number, number], b: readonly [number, number], rows = 2, sc = 1) => {
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      for (let k = 0; k < len / 0.62; k++) {
-        const t = k / (len / 0.62);
-        for (let row = 0; row < 2; row++) {
+      for (let k = 0; k < len / (0.62 * sc); k++) {
+        const t = k / (len / (0.62 * sc));
+        for (let row = 0; row < rows; row++) {
           const x = a[0] + (b[0] - a[0]) * t + (rand(k + row * 7) - 0.5) * 0.2;
           const z = a[1] + (b[1] - a[1]) * t + (rand(k * 3 + row) - 0.5) * 0.2;
           this.dummy.position.set(x, terrainHeight(L, x, z) + 0.3 + row * 0.5, z);
           this.dummy.rotation.set(rand(k), rand(k + 1) * 3, rand(k + 2));
-          this.dummy.scale.set(1 + rand(k + 5) * 0.4, 0.75, 0.9);
+          this.dummy.scale.set((1 + rand(k + 5) * 0.4) * sc, 0.75 * sc, 0.9 * sc);
           this.dummy.updateMatrix();
           walls.push(this.dummy.matrix.clone());
         }
       }
     };
-    for (const w of L.walls) addWall(w[0], w[1]);
+    for (const w of L.walls) addWall(w[0], w[1], 1, 0.8);
     // Terrace retaining walls along each bench row.
     const T = L.terraces;
-    for (let z = T.z0 + 4; z < T.z1; z += 5) addWall([T.x0, z], [T.x1, z]);
+    for (let z = T.z0 + 4; z < T.z1; z += 5) addWall([T.x0, z], [T.x1, z], 1, 0.55);
     const wallMesh = new THREE.InstancedMesh(stoneG, new THREE.MeshStandardMaterial({ color: 0xcbbfa6, roughness: 1, flatShading: true }), walls.length);
     walls.forEach((m, i) => wallMesh.setMatrixAt(i, m));
     wallMesh.castShadow = true;
@@ -778,9 +811,9 @@ export class World {
       const [cx, cz] = g.center(c);
       const x = cx + (rand(i * 1.7) - 0.5) * 2.8;
       const z = cz + (rand(i * 2.3) - 0.5) * 2.8;
-      this.dummy.position.set(x, terrainHeight(L, x, z) + 0.12 * bl + Math.sin(t * 2 + i) * 0.02, z);
-      this.dummy.scale.setScalar(bl * (0.8 + rand(i) * 0.6));
-      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.position.set(x, terrainHeight(L, x, z) - 0.02, z);
+      this.dummy.scale.setScalar(bl * (0.8 + rand(i) * 0.5));
+      this.dummy.rotation.set(Math.sin(t * 1.5 + i) * 0.08, 0, Math.cos(t * 1.3 + i) * 0.08);
       this.dummy.updateMatrix();
       this.flowers.setMatrixAt(fi, this.dummy.matrix);
       this.flowers.setColorAt(fi, this.flowerColors[i]);
@@ -841,6 +874,10 @@ export class World {
     bp.needsUpdate = true;
     (this.bees.material as THREE.PointsMaterial).opacity = beeOk ? 1 : 0.3;
 
+    if (this.fireflies) {
+      this.fireflies.position.y = Math.sin(t * 0.7) * 0.25;
+      (this.fireflies.material as THREE.PointsMaterial).opacity = 0.6 + Math.sin(t * 3) * 0.3;
+    }
     // Pulse wagon refill rings.
     this.missionProps.children.forEach((o) => {
       if (o.userData.pulse) {

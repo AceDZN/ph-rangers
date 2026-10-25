@@ -650,7 +650,10 @@ function handleFx() {
     else if (e.type === 'asset-hurt') {
       hud.hurt(e.id);
       audio.hurt();
-    } else if (e.type === 'won') audio.win();
+    } else if (e.type === 'won') {
+      audio.win();
+      celebrateT = 4;
+    }
     else if (e.type === 'failed') audio.fail();
   }
   fx?.handle(game);
@@ -692,7 +695,18 @@ function updateRanger(dt: number) {
   ranger.root.rotation.y = p.yaw;
   const moving = p.speed > 0.6;
   if (ranger.mixer) {
-    const want = p.spraying && ranger.clips.spray ? 'spray' : moving && (ranger.clips.run || ranger.clips.walk) ? (ranger.clips.run ? 'run' : 'walk') : 'idle';
+    const cheering = celebrateT > 0 && !!ranger.clips.celebrate && !p.spraying && !moving;
+    const want = cheering
+      ? 'celebrate'
+      : p.spraying && ranger.clips.spray
+        ? 'spray'
+        : moving && (ranger.clips.run || ranger.clips.walk)
+          ? p.speed < 3.2 && ranger.clips.walk
+            ? 'walk'
+            : ranger.clips.run
+              ? 'run'
+              : 'walk'
+          : 'idle';
     for (const [k, a] of Object.entries(ranger.clips)) {
       const on = k === want;
       if (on && !a.isRunning()) a.reset().fadeIn(0.2).play();
@@ -703,7 +717,7 @@ function updateRanger(dt: number) {
     // A little victory hop when ground is restored (and the celebrate clip if Tripo gave us one).
     if (celebrateT > 0) {
       celebrateT -= dt;
-      if (!p.spraying && !moving) ranger.root.position.y += Math.max(0, Math.sin((1.2 - celebrateT) * Math.PI * 2.5)) * 0.35;
+      if (!ranger.clips.celebrate && !p.spraying && !moving) ranger.root.position.y += Math.max(0, Math.sin((1.2 - celebrateT) * Math.PI * 2.5)) * 0.35;
     }
     if (!(want in ranger.clips) && ranger.clips.idle && !ranger.clips.idle.isRunning()) ranger.clips.idle.play();
     // Procedural aim pose: both arms reach forward toward the spray target.

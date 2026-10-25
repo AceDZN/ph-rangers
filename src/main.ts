@@ -13,6 +13,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Audio } from './render/audio';
+import { initHost, parseLevelParam, postToHost } from './host';
 import { Fx } from './render/fx';
 import { Hud } from './render/hud';
 import { Models, RangerModel } from './render/models';
@@ -618,8 +619,12 @@ function renderBrief() {
   $('bassets').innerHTML = m.assets.map((a) => `<span>${a.name}: <bdi dir="ltr">pH ${a.lo}–${a.hi}</bdi></span>`).join('');
 }
 
+let levelStartedAt = 0;
+
 function startPlay() {
   audio.unlock();
+  levelStartedAt = performance.now();
+  postToHost({ type: 'level-start', level: game.mission.num });
   sadT = 0;
   celebrateT = 0;
   setMode('play');
@@ -637,6 +642,8 @@ function startPlay() {
 function showResult() {
   const won = game.status === 'won';
   const m = game.mission;
+  if (won)
+    postToHost({ type: 'level-complete', level: m.num, stars: game.stars, score: game.score, durationMs: Math.round(performance.now() - levelStartedAt) });
   $('rtitle').textContent = won ? 'העמק נושם שוב!' : 'אוי, לא הפעם';
   $('rstars').innerHTML = won ? [1, 2, 3].map((i) => `<span class="${i <= game.stars ? '' : 'off'}">★</span>`).join('') : '';
   // Before → after for each spill patch, coloured with the universal indicator.
@@ -1148,10 +1155,15 @@ window.__phr = {
 
 // ---------- boot ----------
 (async () => {
+  initHost('ph-rangers');
   resize();
   applySettings();
   await models.load();
+  // ?level=N (1-based) opens that mission's brief straight away, even if it is still locked here.
+  const deep = parseLevelParam(location.search, MISSIONS.length);
+  if (deep !== null) game.load(MISSIONS[deep].id);
   buildWorld();
-  setMode('title');
+  setMode(deep !== null ? 'brief' : 'title');
   requestAnimationFrame(frame);
+  postToHost({ type: 'ready' });
 })();

@@ -51,15 +51,14 @@ export class Models {
   async load(onProgress?: (p: number) => void) {
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    const names = ['ranger', 'olive', 'beehive', 'truck', 'wagon', 'house'];
+    const names = ['ranger', 'olive', 'beehive', 'truck', 'wagon', 'house', 'farmer', 'wall', 'rocks', 'school', 'bush', 'cypress', 'fish'];
     let done = 0;
     await Promise.all(
       names.map(async (n) => {
         try {
           this.gltf[n] = await loader.loadAsync(`${BASE}models/${n}.glb`);
           this.loaded.push(n);
-        } catch (e) {
-          if (n !== 'ranger') console.warn(`model ${n} not loaded`, e);
+        } catch {
           this.gltf[n] = null;
         }
         done++;
@@ -81,6 +80,56 @@ export class Models {
       return shadows(normalize(w, h)) as THREE.Group;
     }
     return shadows(normalize(sc, h)) as THREE.Group;
+  }
+
+  has(name: string) {
+    return !!this.gltf[name];
+  }
+
+  /**
+   * One mesh of a model with its transform baked in, scaled to height `h`, feet at y = 0 and
+   * centred — ready for an InstancedMesh. Returns the footprint length along x too.
+   */
+  meshOf(name: string, h: number): { geometry: THREE.BufferGeometry; material: THREE.Material; length: number } | null {
+    const g = this.gltf[name];
+    if (!g) return null;
+    g.scene.updateMatrixWorld(true);
+    let found: THREE.Mesh | null = null;
+    g.scene.traverse((o) => {
+      if (!found && (o as THREE.Mesh).isMesh) found = o as THREE.Mesh;
+    });
+    if (!found) return null;
+    const mesh = found as THREE.Mesh;
+    const geo = mesh.geometry.clone();
+    geo.applyMatrix4(mesh.matrixWorld);
+    geo.computeBoundingBox();
+    const b = geo.boundingBox!;
+    const sz = b.getSize(new THREE.Vector3());
+    const sc = h / Math.max(1e-3, sz.y);
+    const c = b.getCenter(new THREE.Vector3());
+    geo.translate(-c.x, -b.min.y, -c.z);
+    geo.scale(sc, sc, sc);
+    return { geometry: geo, material: mesh.material as THREE.Material, length: sz.x * sc };
+  }
+
+  /** Animated character (farmer) with its clips, or null. */
+  character(name: string, h: number): { root: THREE.Group; mixer: THREE.AnimationMixer; clips: Record<string, THREE.AnimationAction> } | null {
+    const g = this.gltf[name];
+    if (!g || !g.animations.length) return null;
+    const scene = SkeletonUtils.clone(g.scene);
+    const root = shadows(normalize(scene, h)) as THREE.Group;
+    const mixer = new THREE.AnimationMixer(scene);
+    const clips: Record<string, THREE.AnimationAction> = {};
+    for (const clip of g.animations) clips[clip.name.toLowerCase()] = mixer.clipAction(clip);
+    return { root, mixer, clips };
+  }
+
+  school(): THREE.Object3D | null {
+    return this.clone('school', 5);
+  }
+
+  fish(): THREE.Object3D | null {
+    return this.clone('fish', 0.35);
   }
 
   olive(): THREE.Object3D {
@@ -155,8 +204,17 @@ export class Models {
     return this.clone('house', 4.2);
   }
 
-  /** Rina the farmer: a simple procedural figure with a straw hat. */
+  /** Rina the farmer: Tripo model if present, otherwise a simple procedural figure. */
   farmer(): THREE.Object3D {
+    const ch = this.character('farmer', 1.65);
+    if (ch) {
+      const want = Object.keys(ch.clips).find((k) => k.includes('wave')) ?? Object.keys(ch.clips).find((k) => k.includes('idle')) ?? Object.keys(ch.clips)[0];
+      ch.clips[want]?.play();
+      ch.root.userData.mixer = ch.mixer;
+      return ch.root;
+    }
+    const still = this.clone('farmer', 1.65);
+    if (still) return still;
     const g = new THREE.Group();
     const skin = new THREE.MeshStandardMaterial({ color: 0xc68a63 });
     const shirt = new THREE.MeshStandardMaterial({ color: 0x7e57c2 });

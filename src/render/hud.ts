@@ -233,7 +233,9 @@ export class Hud {
       rm.style.left = pct(r.exact);
       $('rval').textContent = r.exact.toFixed(1);
       const inb = r.exact >= band.lo && r.exact <= band.hi;
-      label.textContent = `${target} · ${inb ? 'בטווח ✓' : r.exact < band.lo ? 'חומצי מדי – רססו בסיס' : 'בסיסי מדי – רססו חומצה'}`;
+      // No advice on what to spray in the no-hint transfer mission.
+      const advice = game.mission.noHints ? 'מחוץ לטווח' : r.exact < band.lo ? 'חומצי מדי – רססו בסיס' : 'בסיסי מדי – רססו חומצה';
+      label.textContent = `${target} · ${inb ? 'בטווח ✓' : advice}`;
     } else {
       rm.style.display = 'none';
       rr.style.display = 'block';

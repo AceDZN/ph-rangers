@@ -875,9 +875,7 @@ export class World {
     hills.receiveShadow = false;
     this.scene.add(hills);
 
-    // Olive groves and cypress dots on the hills, and white villages on a few crests.
-    const blobG = new THREE.IcosahedronGeometry(1.6, 0);
-    const blobs = new THREE.InstancedMesh(blobG, new THREE.MeshStandardMaterial({ color: night ? 0x0d1a12 : 0x5f7a3a, roughness: 1, flatShading: true }), 900);
+    // Cypresses on the hills, and white villages on a few crests.
     const cypModel = this.models.meshOf('cypress', 7);
     let cypG: THREE.BufferGeometry;
     let cypMat: THREE.Material;
@@ -889,32 +887,25 @@ export class World {
       cypG.translate(0, 3.5, 0);
       cypMat = new THREE.MeshStandardMaterial({ color: night ? 0x0a140d : 0x2f5a2a, roughness: 1, flatShading: true });
     }
-    const cyps = new THREE.InstancedMesh(cypG, cypMat, 260);
-    let nb = 0;
+    const cyps = new THREE.InstancedMesh(cypG, cypMat, 200);
     let nc = 0;
-    for (let i = 0; i < 2400 && (nb < 900 || nc < 260); i++) {
+    for (let i = 0; i < 2400 && nc < 200; i++) {
       const a = rand(i * 3.3) * Math.PI * 2;
       const r = r0 + 6 + rand(i * 7.1) * 150;
       const x = cx + Math.cos(a) * r;
       const z = cz + Math.sin(a) * r;
       const h = hillH(x, z, r);
-      if (rand(i * 5.9) < 0.78 && nb < 900) {
-        this.dummy.position.set(x, h - 0.5, z);
-        this.dummy.scale.set(1 + rand(i) * 0.8, 0.8 + rand(i + 1) * 0.5, 1 + rand(i + 2) * 0.8);
-        this.dummy.rotation.set(0, rand(i) * 6, 0);
-        this.dummy.updateMatrix();
-        blobs.setMatrixAt(nb++, this.dummy.matrix);
-      } else if (nc < 260) {
-        this.dummy.position.set(x, h - 0.3, z);
-        this.dummy.scale.setScalar(0.7 + rand(i + 4) * 0.7);
+      if (nc < 200) {
+        // The hill mesh is coarse; sink trunks well below the analytic height so none float.
+        this.dummy.position.set(x, h - 2.2, z);
+        this.dummy.scale.setScalar(0.9 + rand(i + 4) * 0.8);
         this.dummy.rotation.set(0, 0, 0);
         this.dummy.updateMatrix();
         cyps.setMatrixAt(nc++, this.dummy.matrix);
       }
     }
-    blobs.count = nb;
     cyps.count = nc;
-    this.scene.add(blobs, cyps);
+    this.scene.add(cyps);
     const houseM = new THREE.MeshStandardMaterial({ color: night ? 0x3a4250 : 0xf1e8d6, roughness: 1 });
     const winM = new THREE.MeshBasicMaterial({ color: 0xffc766 });
     for (let v = 0; v < 6; v++) {

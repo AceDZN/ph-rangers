@@ -445,6 +445,12 @@ export class Fx {
     this.aimRing.rotation.z += dt * 0.8;
   }
 
+  /** Hide the aiming aids while menus are up. */
+  showAim(on: boolean) {
+    this.aimRing.visible = on;
+    this.cellBox.visible = on;
+  }
+
   clear() {
     this.drops = [];
     for (const [, o] of this.thrown) this.scene.remove(o);

@@ -926,6 +926,7 @@ function render(dt: number) {
     audio.spraying(has, valve, game.tank.strength);
   } else audio.spraying(false, 'base', 1);
   fx.update(game, dt, !!game.mission.night);
+  fx.showAim(mode === 'play');
   // Ambient beds: rain under the storm, running water near the creek or pond.
   {
     const L = game.mission.layout;

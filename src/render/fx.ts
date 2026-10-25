@@ -465,6 +465,52 @@ export class Fx {
     this.pointerObj.rotation.y = t * 1.5;
   }
 
+  private marks: THREE.LineLoop[] = [];
+  /** Pulsing frames on every measured patch that is still outside its range (red acid, purple base). */
+  problemMarks(game: Game, on: boolean) {
+    const g = game.grid;
+    const list: number[] = [];
+    if (on) {
+      for (let c = 0; c < g.count && list.length < 40; c++) {
+        if (g.know[c] & 4 && !g.inBand(c, game.mission.tol)) list.push(c);
+      }
+    }
+    while (this.marks.length < list.length) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3));
+      const m = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, depthTest: false }));
+      m.renderOrder = 7;
+      m.frustumCulled = false;
+      this.scene.add(m);
+      this.marks.push(m);
+    }
+    const pulse = 0.55 + Math.sin(game.t * 7) * 0.35;
+    this.marks.forEach((m, i) => {
+      const c = list[i];
+      if (c === undefined) {
+        m.visible = false;
+        return;
+      }
+      m.visible = true;
+      const cs = g.cell;
+      const x0 = (c % g.n) * cs + 0.25;
+      const z0 = Math.floor(c / g.n) * cs + 0.25;
+      const x1 = x0 + cs - 0.5;
+      const z1 = z0 + cs - 0.5;
+      const pts: Array<[number, number]> = [];
+      for (let k = 0; k < 4; k++) pts.push([x0 + ((x1 - x0) * k) / 4, z0]);
+      for (let k = 0; k < 4; k++) pts.push([x1, z0 + ((z1 - z0) * k) / 4]);
+      for (let k = 0; k < 4; k++) pts.push([x1 - ((x1 - x0) * k) / 4, z1]);
+      for (let k = 0; k < 4; k++) pts.push([x0, z1 - ((z1 - z0) * k) / 4]);
+      const pa = m.geometry.attributes.position as THREE.BufferAttribute;
+      pts.forEach(([px, pz], k) => pa.setXYZ(k, px, this.h(px, pz) + 0.15, pz));
+      pa.needsUpdate = true;
+      const mat = m.material as THREE.LineBasicMaterial;
+      mat.color.setHex(g.pH[c] < g.band(c).lo ? 0xff3b30 : 0xb04cff);
+      mat.opacity = pulse;
+    });
+  }
+
   /** Hide the aiming aids while menus are up. */
   showAim(on: boolean) {
     this.aimRing.visible = on;

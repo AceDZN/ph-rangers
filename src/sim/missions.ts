@@ -114,7 +114,7 @@ export const MISSIONS: MissionDef[] = [
     layout: GALILEE,
     start: { x: 74, z: 75, yaw: Math.PI * 1.25 },
     area: { x0: 57, z0: 57, x1: 75, z1: 75 },
-    tol: 0,
+    tol: 0.5,
     minTime: 0,
     setup: (g) => {
       const spill = [at(g, 21, 21), at(g, 22, 22), at(g, 21, 22), at(g, 22, 21)];
@@ -135,10 +135,10 @@ export const MISSIONS: MissionDef[] = [
     ],
     tutorial: [
       { title: 'רוצו לשלולית', text: 'השלולית האפורה מסומנת בחץ. הולכים עם המקשים, מסובבים מצלמה עם קליק ימני (או Q/E).', keys: ['W', 'A', 'S', 'D'], until: 'near-spill', pointAtSpill: true },
-      { title: 'חומצי או בסיסי?', text: 'שימו את העכבר על השלולית ולחצו R – נזרוק עליה נייר לקמוס.', keys: ['R'], focus: '.gadget[data-gadget="litmus"]', until: 'litmus-on-spill', pointAtSpill: true },
-      { title: 'אדום = חומצי! אבל כמה?', text: 'עכבר על השלולית ולחצו G – ערפל אוניברסלי צובע ומראה מספר.', keys: ['G'], focus: '.gadget[data-gadget="mist"]', until: 'mist-on-spill', pointAtSpill: true },
+      { title: 'חומצי או בסיסי?', text: 'שימו את העכבר על השלולית ולחצו R – או לחצו על כפתור הלקמוס ואז על השלולית.', keys: ['R'], focus: '.gadget[data-gadget="litmus"]', until: 'litmus-on-spill', pointAtSpill: true },
+      { title: 'אדום = חומצי! אבל כמה?', text: 'עכבר על השלולית ולחצו G (או כפתור האוניברסלי ואז השלולית) – הוא צובע ומראה מספר.', keys: ['G'], focus: '.gadget[data-gadget="mist"]', until: 'mist-on-spill', pointAtSpill: true },
       { title: 'מרססים בסיס', text: 'חומצה מנטרלים בבסיס. בחרו בסיס (2) והחזיקו קליק שמאלי על השלולית.', keys: ['2', 'קליק'], focus: '.valve.base', until: 'spill-rising' },
-      { title: 'עד הירוק!', text: 'הסרגל למטה מראה את ה-pH. עצרו כשהוא במסגרת (6–8) – ליד היעד הזרם נהיה עדין. עברתם? קצת חומצה (1).', keys: ['קליק', '1'], focus: '#ruler', until: 'won' },
+      { title: 'עד הירוק!', text: 'הסרגל למטה מראה את ה-pH. הריסוס נעצר לבד כשמגיעים לטווח. משבצות שעוד צריך לתקן מסומנות במסגרת אדומה – רססו עליהן.', keys: ['קליק'], focus: '#ruler', until: 'won' },
     ],
     idealChem: 0.1,
     winText: 'חומצה + בסיס ← מלח + מים. השלולית ירוקה, ונשאר רק קרום מלח דק.',

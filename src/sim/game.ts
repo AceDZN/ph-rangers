@@ -747,7 +747,7 @@ export class Game {
     else if (this.holdT > 0) main = 'מחזיקים יציב... עוד רגע!';
     else if (hurt.length) main = `הגנו על ${hurt[0].name}!`;
     else if (this.mission.strength10 === 'wagon' && !this.tank.strength10 && this.t > 6) main = 'קחו תרכיז ×10 מעגלת האספקה';
-    else if (bad > 0) main = `החזירו לטווח: ${bad} ${bad === 1 ? 'כתם' : 'כתמים'} (החיצים מראים)`;
+    else if (bad > 0) main = `תקנו ${bad === 1 ? 'משבצת אחת מסומנת' : `${bad} משבצות מסומנות`} (אדום = חומצי, סגול = בסיסי)`;
     else if (unknown > 0) main = 'מדדו את הקרקע האפורה בערפל אוניברסלי';
     else if (wait > 0) main = 'החזיקו מעמד – הסערה עוד עוברת';
     else main = 'כמעט! הכול נמדד – בדקו שהכול בטווח';

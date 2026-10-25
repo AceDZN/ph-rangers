@@ -1764,3 +1764,325 @@ body.reduced * {
     font-size: 15px;
   }
 }
+
+/* ---------- round 2b: UX review fixes ---------- */
+.timer small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  direction: rtl;
+  white-space: nowrap;
+}
+.timer:not(.storm) .bar {
+  display: none;
+}
+.timer:not(.storm) {
+  min-width: 0;
+}
+.timer.storm .bar i {
+  background: linear-gradient(90deg, #90a4ae, #546e7a);
+}
+.mchips {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.mchips span {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted);
+}
+.mchips span.bad {
+  background: rgba(229, 57, 53, 0.35);
+  color: #fff;
+}
+.mchips span.unk {
+  background: rgba(144, 164, 174, 0.35);
+  color: #fff;
+}
+.asset .now.alert {
+  color: #ff8a80;
+  font-weight: 800;
+  animation: pulse-text 0.8s infinite;
+}
+@keyframes pulse-text {
+  50% {
+    opacity: 0.4;
+  }
+}
+/* Ruler: value tag under the bar so it never covers the instruction line. */
+.rmark {
+  height: 30px;
+}
+.rmark b {
+  bottom: auto;
+  top: 44px;
+}
+.ruler {
+  padding-bottom: 24px;
+}
+.rtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rghost {
+  position: absolute;
+  top: -4px;
+  width: 0;
+  height: 26px;
+  margin-left: -1px;
+  border-left: 2px dashed rgba(255, 255, 255, 0.95);
+  display: none;
+  transition: left 0.15s;
+}
+.rghost::after {
+  content: '1 ריסוס';
+  position: absolute;
+  top: -16px;
+  left: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
+/* Toasts live in a band under the objective, not over the aim point. */
+.toast {
+  top: 132px;
+  left: 50%;
+  font-size: 22px;
+  padding: 6px 18px;
+  transform: translate(-50%, 0);
+  animation: toast-in 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, -20px) scale(0.6);
+    opacity: 0;
+  }
+}
+.floater.warn {
+  direction: ltr;
+}
+.callout.hint {
+  top: 168px;
+  bottom: auto;
+  right: 14px;
+  transform: none;
+}
+.tank.low {
+  animation: lowpulse 0.9s infinite;
+}
+@keyframes lowpulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 82, 82, 0.8), 0 0 24px rgba(255, 82, 82, 0.8);
+  }
+}
+.tanklow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  background: #e53935;
+  color: #fff;
+  font-weight: 800;
+  border-radius: 8px;
+  padding: 2px 8px;
+  z-index: 4;
+  font-size: 16px;
+}
+.arrow.acidic::before {
+  background: rgba(229, 57, 53, 0.92);
+}
+.arrow.basic::before {
+  background: rgba(142, 36, 170, 0.92);
+}
+body.result-open #hud {
+  display: none;
+}
+
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 4px 14px;
+  margin: 10px 0;
+}
+
+/* Phone portrait: compact asset strip (icon + health) so the ruler never covers it. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .assets {
+    flex-direction: row;
+    min-width: 0;
+    padding: 4px 6px;
+    gap: 6px;
+  }
+  .asset {
+    grid-template-columns: 26px;
+    grid-template-rows: auto auto;
+    column-gap: 0;
+  }
+  .asset .ic {
+    grid-row: auto;
+    width: 26px;
+    height: 22px;
+  }
+  .asset .row1:first-of-type {
+    display: none;
+  }
+  .asset .now {
+    display: none;
+  }
+  .asset .hp {
+    width: 26px;
+  }
+  .ruler {
+    top: 98px;
+  }
+  .callout {
+    top: 190px;
+  }
+}
+
+/* Phone landscape: thin ruler at the top, controls in side columns, centre kept clear. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .score {
+    top: 6px;
+    bottom: auto;
+    left: 50%;
+    font-size: 15px;
+    padding: 1px 10px;
+  }
+  .ruler {
+    top: 36px;
+    bottom: auto;
+    width: 36vw;
+    padding: 2px 8px 18px;
+  }
+  .rtitle {
+    font-size: 11px;
+    min-height: 0;
+    margin-bottom: 2px;
+  }
+  .rbar {
+    height: 12px;
+  }
+  .rends,
+  .rticks {
+    display: none;
+  }
+  .assets .asset .row1:first-of-type .nm {
+    display: none;
+  }
+  .br {
+    right: 8px;
+    bottom: 8px;
+    flex-direction: row-reverse;
+    align-items: flex-end;
+  }
+  .tank {
+    width: 50px;
+    height: 74px;
+    margin: 0;
+  }
+  .tank-ph bdi {
+    font-size: 20px;
+  }
+  .valves {
+    flex-direction: column;
+    padding: 4px;
+    gap: 4px;
+  }
+  .valve {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    padding-top: 2px;
+  }
+  .valve .vi {
+    width: 34px;
+    height: 34px;
+  }
+  .gadgets {
+    left: 8px;
+    bottom: 8px;
+    flex-direction: column;
+    padding: 4px;
+    gap: 4px;
+  }
+  .gadget {
+    width: 44px;
+    height: 44px;
+  }
+  .gi {
+    width: 34px;
+    height: 28px;
+  }
+  .topbtns {
+    top: auto;
+    bottom: 8px;
+    right: 50%;
+    transform: translateX(50%);
+  }
+  .callout {
+    top: 80px;
+    font-size: 13px;
+  }
+  .mission {
+    max-width: 38vw;
+  }
+  #stick {
+    left: 64px;
+    bottom: 12px;
+    width: 96px;
+    height: 96px;
+  }
+  #tspray {
+    right: 120px;
+    bottom: 12px;
+    width: 76px;
+    height: 76px;
+  }
+}
+
+/* Cards scroll inside, and the main button stays reachable. */
+.side-card {
+  overflow: auto;
+}
+.brief-card #bgo,
+.result-card .row {
+  position: sticky;
+  bottom: 0;
+}
+.result-card .row {
+  background: rgba(14, 28, 44, 0.95);
+  padding-top: 8px;
+}
+@media (max-height: 560px) {
+  .screen.side {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px;
+  }
+  #title .logo {
+    position: static;
+    max-width: 44vw;
+  }
+  #title .logo h1 {
+    font-size: 40px;
+  }
+  .playbig {
+    font-size: 22px;
+    padding: 8px 30px;
+  }
+  .side-card {
+    max-height: calc(100vh - 16px);
+    padding: 12px 16px;
+  }
+  .missions .mi {
+    width: 36px;
+    height: 36px;
+    font-size: 24px;
+  }
+}

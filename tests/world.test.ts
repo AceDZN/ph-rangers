@@ -80,15 +80,16 @@ describe('grid', () => {
 });
 
 describe('player and tank', () => {
-  it('a single tap sprays one puff; holding sprays continuously', () => {
+  it('a single tap sprays one puff; holding ramps up to a continuous stream', () => {
     const game = new Game('m1-lemon');
     const bot = new Bot(game);
     bot.aimCell(game.spill[0]);
     bot.spray('base', 1 / 60);
     expect(game.stats.puffs).toBe(1);
     bot.spray('base', 1);
-    expect(game.stats.puffs).toBeGreaterThanOrEqual(20);
-    expect(game.stats.puffs).toBeLessThanOrEqual(22);
+    // Half rate for the first 0.35 s, then 20 puffs/s.
+    expect(game.stats.puffs).toBeGreaterThanOrEqual(16);
+    expect(game.stats.puffs).toBeLessThanOrEqual(19);
   });
 
   it('the tank gauge shows the pH of the selected liquid', () => {

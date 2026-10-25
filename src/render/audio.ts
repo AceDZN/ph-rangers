@@ -225,6 +225,53 @@ export class Audio {
     this.tone(scale[start + 4] * 2, 0.4, 'sine', 0.05, undefined, 0.22);
   }
 
+  private rainGain: GainNode | null = null;
+  private waterGain: GainNode | null = null;
+
+  /** Continuous beds: rain (0..1) and nearby running water (0..1). */
+  beds(rain: number, water: number) {
+    if (!this.ctx || !this.master || !this.noise) return;
+    if (!this.rainGain) {
+      const mk = (freq: number, type: BiquadFilterType, q: number) => {
+        const src = this.ctx!.createBufferSource();
+        src.buffer = this.noise;
+        src.loop = true;
+        const f = this.ctx!.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        const g = this.ctx!.createGain();
+        g.gain.value = 0;
+        src.connect(f).connect(g).connect(this.master!);
+        src.start(0, Math.random());
+        return g;
+      };
+      this.rainGain = mk(6000, 'highpass', 0.3);
+      this.waterGain = mk(900, 'bandpass', 0.6);
+    }
+    const t = this.ctx.currentTime;
+    this.rainGain.gain.setTargetAtTime(rain * 0.12, t, 0.3);
+    this.waterGain!.gain.setTargetAtTime(water * 0.05, t, 0.3);
+  }
+
+  thunder() {
+    if (!this.ctx || !this.master || !this.noise) return;
+    const t = this.ctx.currentTime;
+    const s = this.ctx.createBufferSource();
+    s.buffer = this.noise;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(400, t);
+    f.frequency.exponentialRampToValueAtTime(80, t + 2.5);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+    s.connect(f).connect(g).connect(this.master);
+    s.start(t, Math.random());
+    s.stop(t + 3);
+  }
+
   go() {
     [392, 523, 659, 784].forEach((f, i) => this.tone(f, 0.22, 'square', 0.06, undefined, i * 0.09));
     this.tone(1046, 0.5, 'triangle', 0.1, undefined, 0.36);

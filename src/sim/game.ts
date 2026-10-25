@@ -1,7 +1,7 @@
 // Game state: ranger movement, the three-valve tank, indicator gadgets, spray packets,
 // mission win/fail and learning events. Pure TypeScript; the renderer only reads it.
 
-import { Strength, Valve, litmus, phClass, phenolphthalein, sprayExcess, sprayPH, universal } from './chem';
+import { Strength, Valve, litmus, phClass, phFromNet, phenolphthalein, sprayExcess, sprayPH, universal } from './chem';
 import { Circle, colliders, terrainHeight } from './layout';
 import { Loadout, MISSIONS, MissionDef } from './missions';
 import { Grid, KNOW_LITMUS, KNOW_PHENOL, KNOW_UNIVERSAL, Kind } from './world';
@@ -98,7 +98,7 @@ export interface LearnEvent {
 export const SPRAY_LPS = 0.8; // litres per second through the nozzle
 export const PACKET_DT = 0.05; // one puff
 export const SPRAY_RANGE = 15;
-export const GADGET_RADIUS = 7.5;
+export const GADGET_RADIUS = 9;
 const GRID_DT = 0.05;
 const WIN_HOLD = 1.5;
 /** Seconds for one universal-indicator mist charge to refill on its own. */
@@ -148,6 +148,7 @@ export class Game {
   private colliders: Circle[] = [];
   private sprayWas = false;
   private sprayTimer = 0;
+  private sprayHeld = 0;
   private gridAcc = 0;
   private throwCd = 0;
   private firstSpray = true;
@@ -392,10 +393,15 @@ export class Game {
       this.sprayTimer = 0;
       return;
     }
-    if (pressed) this.sprayTimer = PACKET_DT; // a tap always makes one puff
-    else this.sprayTimer += dt;
-    while (this.sprayTimer >= PACKET_DT - 1e-9) {
-      this.sprayTimer -= PACKET_DT;
+    if (pressed) {
+      this.sprayTimer = PACKET_DT * 2; // a tap always makes one puff
+      this.sprayHeld = 0;
+    } else this.sprayTimer += dt;
+    this.sprayHeld += dt;
+    // The nozzle opens gradually: half rate for the first 0.35 s so short holds stay gentle.
+    const interval = this.sprayHeld < 0.35 ? PACKET_DT * 2 : PACKET_DT;
+    while (this.sprayTimer >= interval - 1e-9) {
+      this.sprayTimer -= interval;
       if (!this.emitPacket()) {
         this.sprayTimer = 0;
         break;
@@ -477,6 +483,7 @@ export class Game {
       if (wasIn && !isIn && k.valve !== 'water') {
         const dir = after > b.hi ? 'base' : 'acid';
         this.log('overshoot', { cell: c, pH: after, value: k.valve });
+        this.combo = 0;
         if (measured && this.t - this.lastOvershoot > 1.2) {
           this.lastOvershoot = this.t;
           this.fx.push({ type: 'overshoot', x: k.tx, z: k.tz, pH: after, dir });
@@ -653,20 +660,28 @@ export class Game {
     this.log('fail', { value: reason });
   }
 
+  private tutorialDone(until: string): boolean {
+    const g = this.grid;
+    if (until === 'near-spill') {
+      const [cx, cz] = g.center(this.spill[0]);
+      return Math.hypot(this.player.x - cx, this.player.z - cz) < 13;
+    }
+    if (until === 'litmus-on-spill') return this.markers.some((m) => this.spill.includes(m.cell));
+    if (until === 'mist-on-spill') return this.spill.filter((c) => g.know[c] & KNOW_UNIVERSAL).length >= this.spill.length / 2;
+    if (until === 'spill-rising') return g.zonePH(this.spill) > 4.6;
+    return this.status === 'won';
+  }
+
+  /** Jump to the furthest step already satisfied, so skipping ahead never leaves a stale prompt. */
   private tutorial() {
     const steps = this.mission.tutorial;
     if (!steps || this.tutorialStep >= steps.length) return;
-    const g = this.grid;
-    const s = steps[this.tutorialStep];
-    let done = false;
-    if (s.until === 'near-spill') {
-      const [cx, cz] = g.center(this.spill[0]);
-      done = Math.hypot(this.player.x - cx, this.player.z - cz) < 13;
-    } else if (s.until === 'litmus-on-spill') done = this.markers.some((m) => this.spill.includes(m.cell));
-    else if (s.until === 'mist-on-spill') done = this.spill.filter((c) => g.know[c] & KNOW_UNIVERSAL).length >= this.spill.length / 2;
-    else if (s.until === 'spill-rising') done = g.zonePH(this.spill) > 4.6;
-    else if (s.until === 'won') done = this.status === 'won';
-    if (done) this.tutorialStep++;
+    for (let i = steps.length - 1; i >= this.tutorialStep; i--) {
+      if (this.tutorialDone(steps[i].until)) {
+        this.tutorialStep = i + 1;
+        return;
+      }
+    }
   }
 
   tutorialText(): string {
@@ -675,10 +690,8 @@ export class Game {
     return steps[this.tutorialStep].text;
   }
 
-  objective(): string {
-    if (this.status === 'won') return 'המשימה הושלמה!';
-    if (this.status === 'failed') return 'המשימה נכשלה – נסו שוב';
-    // Only what the ranger could know: measured cells, unmeasured suspect ground, assets in trouble.
+  /** Counts the ranger can know: measured cells out of band, unmeasured suspect ground, assets in danger. */
+  objectiveInfo(): { main: string; bad: number; unknown: number; danger: number; wait: number } {
     const g = this.grid;
     let bad = 0;
     let unknown = 0;
@@ -687,12 +700,25 @@ export class Game {
         if (!g.inBand(c, this.mission.tol)) bad++;
       } else if (g.suspect[c]) unknown++;
     }
-    const danger = this.assets.filter((a) => a.health < 100 && (a.pH < a.lo || a.pH > a.hi)).length;
-    const wait = this.mission.minTime > 0 && this.t < this.mission.minTime ? ` · עוד ${Math.ceil(this.mission.minTime - this.t)} שנ׳` : '';
-    if (this.holdT > 0) return `מחזיקים יציב...${wait}`;
-    const parts = [`נמדדו מחוץ לטווח: ${bad}`, `לא נמדדו: ${unknown}`];
-    if (danger) parts.push(`בסכנה: ${danger}`);
-    return parts.join(' · ') + wait;
+    const hurt = this.assets.filter((a) => a.health < 100 && (a.pH < a.lo || a.pH > a.hi));
+    const wait = this.mission.minTime > 0 && this.t < this.mission.minTime ? Math.ceil(this.mission.minTime - this.t) : 0;
+    let main: string;
+    if (this.status === 'won') main = 'המשימה הושלמה!';
+    else if (this.status === 'failed') main = 'המשימה נכשלה – נסו שוב';
+    else if (this.holdT > 0) main = 'מחזיקים יציב... עוד רגע!';
+    else if (hurt.length) main = `הגנו על ${hurt[0].name}!`;
+    else if (this.mission.strength10 === 'wagon' && !this.tank.strength10 && this.t > 6) main = 'קחו תרכיז ×10 מעגלת האספקה';
+    else if (bad > 0) main = `החזירו לטווח: ${bad} ${bad === 1 ? 'כתם' : 'כתמים'} (החיצים מראים)`;
+    else if (unknown > 0) main = 'מדדו את הקרקע האפורה בערפל אוניברסלי';
+    else if (wait > 0) main = 'החזיקו מעמד – הסערה עוד עוברת';
+    else main = 'כמעט! הכול נמדד – בדקו שהכול בטווח';
+    return { main, bad, unknown, danger: hurt.length, wait };
+  }
+
+  objective(): string {
+    const o = this.objectiveInfo();
+    if (this.status !== 'play') return o.main;
+    return `${o.main} · מחוץ לטווח: ${o.bad} · לא נמדדו: ${o.unknown}${o.wait ? ` · עוד ${o.wait} שנ׳` : ''}`;
   }
 
   private log(action: string, extra: Partial<LearnEvent> = {}) {
@@ -724,6 +750,16 @@ export class Game {
       return { kind: 'litmus', text: r === 'acid' ? 'לקמוס: אדום – חומצי' : r === 'base' ? 'לקמוס: כחול – בסיסי' : 'לקמוס: אין שינוי ברור' };
     }
     return { kind: 'none', text: '?' };
+  }
+
+  /** pH the aimed cell would have after one more puff of the selected liquid (if measured). */
+  nextPuffPH(): number | null {
+    const g = this.grid;
+    const c = this.aim.cell;
+    if (!(g.know[c] & KNOW_UNIVERSAL)) return null;
+    const litres = SPRAY_LPS * PACKET_DT;
+    const ex = sprayExcess(this.tank.valve, this.tank.strength, litres);
+    return phFromNet(g.E[c] + ex, g.V[c] + litres, g.beta[c]);
   }
 
   /**

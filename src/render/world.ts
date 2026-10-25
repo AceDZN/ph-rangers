@@ -55,8 +55,8 @@ vec4 ovC;`,
   float g = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(g) * vec3(0.62, 0.62, 0.6), st.r * 0.9);
   diffuseColor.rgb = mix(diffuseColor.rgb, ovC.rgb, ovC.a);
-  float n = fract(sin(dot(floor(vWPos.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.97, 0.94), step(0.78, n) * st.g * 0.85);
+  float n = fract(sin(dot(floor(vWPos.xz * 11.0), vec2(12.9898, 78.233))) * 43758.5453);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.97, 0.94), step(0.84, n) * st.g * 0.8);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.55, 0.62, 0.75), st.a * 0.8);
   float rip = 0.5 + 0.5 * sin(uTime * 3.0 + vWPos.x * 1.7 + vWPos.z * 1.3);
   diffuseColor.rgb += st.b * rip * vec3(0.25, 0.2, 0.1);
@@ -94,9 +94,24 @@ export class World {
   private fireflies: THREE.Points | null = null;
   private bushModel = false;
   private mixers: THREE.AnimationMixer[] = [];
+  /** Big props that fade out when they block the view of the ranger or the aim point. */
+  private occluders: Array<{ obj: THREE.Object3D; c: THREE.Vector3; r: number; mats: THREE.Material[]; fade: number }> = [];
   private ticks: Array<(dt: number) => void> = [];
   private clouds: THREE.Sprite[] = [];
+  private rain: THREE.InstancedMesh | null = null;
+  private rainData: Float32Array | null = null;
+  private stormCloud: THREE.Mesh | null = null;
+  private curtain: THREE.Mesh | null = null;
+  private skyBase = new THREE.Color();
+  private sunBase = 0;
+  private hemiBase = 0;
+  /** 0..1 how much the ranger is under the storm (for sound and light). */
+  stormHere = 0;
+  /** Set when lightning should flash this frame. */
+  lightning = false;
+  private flashT = 0;
   private waterNormal: THREE.Texture | null = null;
+  private creekNormal: THREE.Texture | null = null;
   private missionProps = new THREE.Group();
   private wagons: THREE.Object3D[] = [];
   night: boolean;
@@ -146,6 +161,8 @@ export class World {
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target);
+    this.sunBase = this.sun.intensity;
+    this.hemiBase = this.hemi.intensity;
     this.addSkyDome(night);
 
     this.terrain = this.buildTerrain();
@@ -364,7 +381,23 @@ export class World {
       }),
       this.uniforms,
     );
-    // Creek ribbon.
+    // Creek ribbon: its own material so the ripples can flow downstream, foam at the edges.
+    this.creekNormal = this.waterNormal.clone();
+    this.creekNormal.wrapS = this.creekNormal.wrapT = THREE.RepeatWrapping;
+    this.creekNormal.repeat.set(1, 1);
+    const creekMat = overlayMaterial(
+      new THREE.MeshStandardMaterial({
+        color: this.night ? 0x5a7fa0 : 0xffffff,
+        vertexColors: true,
+        roughness: 0.06,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.9,
+        normalMap: this.creekNormal,
+        normalScale: new THREE.Vector2(0.9, 0.9),
+      }),
+      this.uniforms,
+    );
     const pts: THREE.Vector3[] = [];
     for (let s = 0; s < L.creek.length - 1; s++) {
       const a = L.creek[s];
@@ -381,7 +414,10 @@ export class World {
     pts.push(new THREE.Vector3(L.creek[L.creek.length - 1][0], 0, L.creek[L.creek.length - 1][1]));
     const verts: number[] = [];
     const uvs: number[] = [];
+    const cols: number[] = [];
     const idx: number[] = [];
+    let along = 0;
+    const bankStones: Array<[number, number]> = [];
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       const q = pts[Math.min(pts.length - 1, i + 1)];
@@ -391,21 +427,50 @@ export class World {
       const d = Math.hypot(dx, dz) || 1;
       const nx = -dz / d;
       const nz = dx / d;
-      const w = 1.25;
-      const y = terrainHeight(L, p.x, p.z) + 0.42;
-      verts.push(p.x + nx * w, y, p.z + nz * w, p.x - nx * w, y, p.z - nz * w);
-      uvs.push((p.x + nx * w) / 6, (p.z + nz * w) / 6, (p.x - nx * w) / 6, (p.z - nz * w) / 6);
+      if (i > 0) along += p.distanceTo(pts[i - 1]);
+      // Three strips across: foamy edge, deep middle, foamy edge. Edges hug the bank.
+      const y = terrainHeight(L, p.x, p.z) + 0.85;
+      const offs = [1.8, 0.7, -0.7, -1.8];
+      for (const o of offs) {
+        const ex = p.x + nx * o;
+        const ez = p.z + nz * o;
+        const ey = Math.abs(o) > 1 ? Math.min(y, terrainHeight(L, ex, ez) + 0.06) : y;
+        verts.push(ex, ey, ez);
+        uvs.push((o + 1.8) / 3.6, along / 4);
+        if (this.night) cols.push(0.6, 0.7, 0.85);
+        else if (Math.abs(o) > 1) cols.push(0.82, 0.93, 1.0);
+        else cols.push(0.3, 0.62, 0.86);
+      }
       if (i < pts.length - 1) {
-        const k = i * 2;
-        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+        const k = i * 4;
+        for (let c = 0; c < 3; c++) idx.push(k + c, k + c + 1, k + c + 4, k + c + 1, k + c + 5, k + c + 4);
+      }
+      if (i % 3 === 0) {
+        bankStones.push([p.x + nx * (2.1 + rand(i) * 0.4), p.z + nz * (2.1 + rand(i) * 0.4)]);
+        bankStones.push([p.x - nx * (2.1 + rand(i + 1) * 0.4), p.z - nz * (2.1 + rand(i + 1) * 0.4)]);
       }
     }
     const cg = new THREE.BufferGeometry();
     cg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     cg.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    cg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     cg.setIndex(idx);
     cg.computeVertexNormals();
-    const creek = new THREE.Mesh(cg, mat);
+    const creek = new THREE.Mesh(cg, creekMat);
+    // Stones lining both banks.
+    const stone = this.models.meshOf('rocks', 0.45);
+    if (stone) {
+      const sm = new THREE.InstancedMesh(stone.geometry, stone.material, bankStones.length);
+      bankStones.forEach(([x, z], i) => {
+        this.dummy.position.set(x, terrainHeight(L, x, z) - 0.08, z);
+        this.dummy.rotation.set(0, rand(i * 5) * 6, 0);
+        this.dummy.scale.setScalar(0.7 + rand(i * 3) * 0.8);
+        this.dummy.updateMatrix();
+        sm.setMatrixAt(i, this.dummy.matrix);
+      });
+      sm.castShadow = true;
+      this.scene.add(sm);
+    }
     creek.receiveShadow = true;
     this.scene.add(creek);
     // Pond.
@@ -466,6 +531,7 @@ export class World {
       tree.position.set(t.x, terrainHeight(L, t.x, t.z) - 0.05, t.z);
       tree.rotation.y = rand(t.x * 13 + t.z) * Math.PI * 2;
       g.add(tree);
+      this.addOccluder(tree);
     }
     // Stone walls.
     const stoneG = new THREE.DodecahedronGeometry(0.42, 0);
@@ -606,6 +672,7 @@ export class World {
         tm.rotation.y = hs.rot;
         tm.scale.multiplyScalar(Math.max(hs.w, hs.d) / 5.5);
         g.add(tm);
+        this.addOccluder(tm);
       } else house(hs.x, hs.z, hs.rot, hs.w, hs.d, 3.2);
     }
     const schoolModel = models.school();
@@ -614,6 +681,7 @@ export class World {
       schoolModel.position.set(L.school.x, terrainHeight(L, L.school.x, L.school.z) - 0.1, L.school.z);
       schoolModel.rotation.y = L.school.rot + Math.PI;
       g.add(schoolModel);
+      this.addOccluder(schoolModel);
       school = new THREE.Group();
       school.position.copy(schoolModel.position);
       school.rotation.y = L.school.rot;
@@ -818,7 +886,7 @@ export class World {
       const z = cz + Math.sin(a) * r;
       const h = hillH(x, z, r);
       if (rand(i * 5.9) < 0.78 && nb < 900) {
-        this.dummy.position.set(x, h + 0.6, z);
+        this.dummy.position.set(x, h - 0.5, z);
         this.dummy.scale.set(1 + rand(i) * 0.8, 0.8 + rand(i + 1) * 0.5, 1 + rand(i + 2) * 0.8);
         this.dummy.rotation.set(0, rand(i) * 6, 0);
         this.dummy.updateMatrix();
@@ -893,6 +961,7 @@ export class World {
 
   /** Props that belong to one mission (wagons, lemons, lime dust, soap bottles). */
   setMission(game: Game, models: Models) {
+    this.occluders = this.occluders.filter((o) => !this.wagons.includes(o.obj));
     this.missionProps.clear();
     this.mixers = [];
     this.ticks = [];
@@ -904,6 +973,7 @@ export class World {
       w.rotation.y = rand(x + z) * Math.PI * 2;
       this.missionProps.add(w);
       this.wagons.push(w);
+      this.addOccluder(w);
       // A glowing refill ring.
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(3.2, 3.6, 40),
@@ -916,14 +986,18 @@ export class World {
     }
     const g = game.grid;
     const id = game.mission.id;
+    const soft = this.softDecal();
     const puddle = (cells: number[], color: number, opacity: number) => {
-      const m = overlayMaterial(new THREE.MeshStandardMaterial({ color, transparent: true, opacity, roughness: 0.08, metalness: 0.1, depthWrite: false }), this.uniforms);
+      const m = overlayMaterial(
+        new THREE.MeshStandardMaterial({ color, transparent: true, opacity, roughness: 0.08, metalness: 0.1, depthWrite: false, alphaMap: soft }),
+        this.uniforms,
+      );
       for (const c of cells) {
         const [x, z] = g.center(c);
         for (let k = 0; k < 3; k++) {
           const dx = x + (rand(c + k * 3) - 0.5) * 1.4;
           const dz = z + (rand(c * 7 + k) - 0.5) * 1.4;
-          const d = new THREE.Mesh(new THREE.CircleGeometry(1 + rand(c + k) * 0.7, 14), m);
+          const d = new THREE.Mesh(new THREE.CircleGeometry(1.5 + rand(c + k) * 0.8, 20), m);
           d.rotation.x = -Math.PI / 2;
           d.scale.set(1, 0.7 + rand(k + c * 3) * 0.5, 1);
           d.position.set(dx, terrainHeight(L, dx, dz) + 0.07 + k * 0.004, dz);
@@ -955,13 +1029,13 @@ export class World {
       }
     }
     if (id === 'm3-quarry') {
-      const dustM = new THREE.MeshStandardMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.85, roughness: 1, depthWrite: false });
+      const dustM = new THREE.MeshStandardMaterial({ color: 0xf4f1ea, transparent: true, opacity: 0.9, roughness: 1, depthWrite: false, alphaMap: soft });
       for (const c of [...game.spill, ...game.decoys]) {
         const [x, z] = g.center(c);
         for (let k = 0; k < 4; k++) {
           const dx = x + (rand(c + k) - 0.5) * 2;
           const dz = z + (rand(c * 3 + k) - 0.5) * 2;
-          const d = new THREE.Mesh(new THREE.CircleGeometry(0.7 + rand(k + c) * 0.6, 12), dustM);
+          const d = new THREE.Mesh(new THREE.CircleGeometry(1.1 + rand(k + c) * 0.7, 18), dustM);
           d.rotation.x = -Math.PI / 2;
           d.position.set(dx, terrainHeight(L, dx, dz) + 0.06, dz);
           this.missionProps.add(d);
@@ -1017,7 +1091,8 @@ export class World {
       let a = 0;
       if (k & KNOW_UNIVERSAL) {
         [r, gg, b] = universalRGB(p);
-        a = 0.8;
+        // At night only problems glow brightly; healthy ground keeps a soft tint.
+        a = this.night && g.inBand(c) ? 0.38 : 0.8;
       } else if (k & KNOW_PHENOL && phenolphthalein(p) !== 'colorless') {
         r = 1;
         gg = 0.3;
@@ -1129,12 +1204,15 @@ export class World {
     (this.bees.material as THREE.PointsMaterial).opacity = beeOk ? 1 : 0.3;
 
     for (const cl of this.clouds) cl.position.x += (cl.userData.drift as number) * dt;
+    this.updateStorm(game, dt);
     for (const mx of this.mixers) mx.update(dt);
     for (const tk of this.ticks) tk(dt);
     if (this.waterNormal) {
       this.waterNormal.offset.x = t * 0.02;
       this.waterNormal.offset.y = t * 0.013;
     }
+    // Ripples run downstream (uv.y grows along the creek).
+    if (this.creekNormal) this.creekNormal.offset.y = -t * 0.35;
     if (this.fireflies) {
       this.fireflies.position.y = Math.sin(t * 0.7) * 0.25;
       (this.fireflies.material as THREE.PointsMaterial).opacity = 0.6 + Math.sin(t * 3) * 0.3;
@@ -1147,6 +1225,180 @@ export class World {
       }
     });
 
+  }
+
+  private addOccluder(obj: THREE.Object3D) {
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const mats: THREE.Material[] = [];
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const arr = Array.isArray(m.material) ? m.material : [m.material];
+      const cl = arr.map((mm) => {
+        const c = mm.clone();
+        mats.push(c);
+        return c;
+      });
+      m.material = Array.isArray(m.material) ? cl : cl[0];
+    });
+    this.occluders.push({ obj, c: sphere.center, r: sphere.radius * 0.75, mats, fade: 1 });
+  }
+
+  private softTex: THREE.Texture | null = null;
+  /** Round alpha mask with a soft, slightly ragged edge for puddles and dust. */
+  private softDecal(): THREE.Texture {
+    if (this.softTex) return this.softTex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const x = c.getContext('2d')!;
+    x.fillStyle = '#000';
+    x.fillRect(0, 0, 128, 128);
+    for (let k = 0; k < 7; k++) {
+      const gx = 64 + (rand(k) - 0.5) * 34;
+      const gy = 64 + (rand(k + 9) - 0.5) * 34;
+      const r = 26 + rand(k + 4) * 24;
+      const g = x.createRadialGradient(gx, gy, r * 0.3, gx, gy, r);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, 128, 128);
+    }
+    this.softTex = new THREE.CanvasTexture(c);
+    return this.softTex;
+  }
+
+  /** Fade props whose bounds cross the sight line from the camera to any of the targets. */
+  updateOcclusion(cam: THREE.Vector3, targets: THREE.Vector3[], dt: number) {
+    const seg = new THREE.Vector3();
+    const toC = new THREE.Vector3();
+    for (const o of this.occluders) {
+      let block = false;
+      for (const t of targets) {
+        seg.subVectors(t, cam);
+        const len = seg.length();
+        seg.divideScalar(len);
+        toC.subVectors(o.c, cam);
+        const along = toC.dot(seg);
+        if (along < 0 || along > len - 0.5) continue;
+        const dist = toC.addScaledVector(seg, -along).length();
+        if (dist < o.r) {
+          block = true;
+          break;
+        }
+      }
+      const want = block ? 0.22 : 1;
+      if (Math.abs(o.fade - want) < 0.01) continue;
+      o.fade += (want - o.fade) * Math.min(1, dt * 8);
+      for (const m of o.mats) {
+        m.transparent = o.fade < 0.99;
+        m.opacity = o.fade;
+        m.depthWrite = o.fade > 0.9;
+      }
+    }
+  }
+
+  /** Is the straight line from a to b clear of big props? (for menu camera shots) */
+  clearView(a: THREE.Vector3, b: THREE.Vector3): boolean {
+    const seg = new THREE.Vector3().subVectors(b, a);
+    const len = seg.length();
+    seg.divideScalar(len);
+    for (const o of this.occluders) {
+      const toC = new THREE.Vector3().subVectors(o.c, a);
+      const along = toC.dot(seg);
+      if (along < 0 || along > len) continue;
+      if (toC.addScaledVector(seg, -along).length() < o.r + 0.3) return false;
+    }
+    return true;
+  }
+
+  /** Rain curtain and a dark cloud band that follow the simulated acid-rain front. */
+  private updateStorm(game: Game, dt: number) {
+    const band = game.mission.rain ? game.mission.rain(game.t) : null;
+    const L = this.layout;
+    if (game.mission.rain && !this.rain) {
+      const N = 2600;
+      const geo = new THREE.BoxGeometry(0.03, 0.9, 0.03);
+      this.rain = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xa9c4e8, transparent: true, opacity: 0.75, depthWrite: false }), N);
+      this.rain.frustumCulled = false;
+      this.rainData = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        this.rainData[i * 3] = rand(i * 1.3);
+        this.rainData[i * 3 + 1] = rand(i * 2.7) * L.size;
+        this.rainData[i * 3 + 2] = rand(i * 4.1) * 25;
+      }
+      this.scene.add(this.rain);
+      const cg = document.createElement('canvas');
+      cg.width = 64;
+      cg.height = 256;
+      const cx = cg.getContext('2d')!;
+      const gr = cx.createLinearGradient(0, 0, 64, 0);
+      gr.addColorStop(0, 'rgba(40,48,60,0)');
+      gr.addColorStop(0.25, 'rgba(40,48,60,0.92)');
+      gr.addColorStop(0.75, 'rgba(40,48,60,0.92)');
+      gr.addColorStop(1, 'rgba(40,48,60,0)');
+      cx.fillStyle = gr;
+      cx.fillRect(0, 0, 64, 256);
+      const tex = new THREE.CanvasTexture(cg);
+      this.stormCloud = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, L.size + 80),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+      );
+      this.stormCloud.rotation.x = Math.PI / 2;
+      this.scene.add(this.stormCloud);
+      // A grey veil of rain you can see coming from across the valley.
+      this.curtain = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 34, L.size + 60),
+        new THREE.MeshBasicMaterial({ color: 0x7d8a99, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      this.scene.add(this.curtain);
+    }
+    if (!this.rain || !this.rainData || !this.stormCloud) return;
+    this.rain.visible = !!band;
+    this.stormCloud.visible = !!band;
+    if (this.curtain) this.curtain.visible = !!band;
+    let here = 0;
+    if (band) {
+      const w = band.x1 - band.x0;
+      const N = this.rain.count;
+      for (let i = 0; i < N; i++) {
+        let y = this.rainData[i * 3 + 2] - dt * 22;
+        if (y < 0) y += 25;
+        this.rainData[i * 3 + 2] = y;
+        const x = band.x0 + this.rainData[i * 3] * w;
+        const z = this.rainData[i * 3 + 1];
+        this.dummy.position.set(x, terrainHeight(L, x, z) + y, z);
+        this.dummy.rotation.set(0, 0, 0.12);
+        this.dummy.scale.setScalar(1);
+        this.dummy.updateMatrix();
+        this.rain.setMatrixAt(i, this.dummy.matrix);
+      }
+      this.rain.instanceMatrix.needsUpdate = true;
+      this.stormCloud.position.set((band.x0 + band.x1) / 2, 30, L.size / 2);
+      this.stormCloud.scale.set(w * 2.4, 1, 1);
+      if (this.curtain) {
+        this.curtain.position.set((band.x0 + band.x1) / 2, 14, L.size / 2);
+        this.curtain.scale.set(w, 1, 1);
+      }
+      const px = game.player.x;
+      here = px > band.x0 - 10 && px < band.x1 + 10 ? 1 - Math.min(1, Math.max(0, Math.max(band.x0 - px, px - band.x1)) / 10) : 0;
+      // Occasional lightning when close.
+      this.flashT -= dt;
+      this.lightning = false;
+      if (here > 0.3 && this.flashT <= 0 && rand(game.t * 13.7) < 0.02) {
+        this.flashT = 2.5;
+        this.lightning = true;
+      }
+    }
+    this.stormHere += (here - this.stormHere) * Math.min(1, dt * 2);
+    const flash = this.flashT > 2.35 ? 1.8 : 0;
+    this.sun.intensity = this.sunBase * (1 - this.stormHere * 0.65) + flash;
+    if (this.scene.background instanceof THREE.Color) {
+      if (this.skyBase.getHex() === 0) this.skyBase.copy(this.scene.background);
+      this.scene.background.copy(this.skyBase).lerp(new THREE.Color(0x6b7785), this.stormHere * 0.7);
+    }
+    this.hemi.intensity = this.hemiBase * (1 - this.stormHere * 0.4) + flash * 0.4;
   }
 
   /** Sun follows the player so shadows stay sharp near the action. */

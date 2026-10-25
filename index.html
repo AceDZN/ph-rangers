@@ -13,12 +13,13 @@
       <div id="badges" aria-hidden="true"></div>
       <div id="hud" hidden>
         <div class="tl">
-          <div class="panel timer"><span class="clock" aria-hidden="true">⏱</span><bdi id="time" dir="ltr">0:00</bdi><div class="bar"><i id="timebar"></i></div></div>
+          <div class="panel timer"><span class="clock" aria-hidden="true">⏱</span><small id="timelabel">זמן</small><bdi id="time" dir="ltr">0:00</bdi><div class="bar"><i id="timebar"></i></div></div>
           <div class="panel assets" id="assets"></div>
         </div>
         <div class="tr panel mission">
           <div class="mtitle"><span class="flag" aria-hidden="true"></span><b id="mtitle"></b></div>
           <div class="mobj"><span class="target" aria-hidden="true">◎</span><span id="mobj"></span></div>
+          <div class="mchips" id="mchips"></div>
         </div>
         <div id="tutorial" class="callout" hidden></div>
         <div id="toast" class="toast" hidden></div>
@@ -33,6 +34,7 @@
           <div class="rbar">
             <i class="rband" id="rband"></i>
             <i class="rrange" id="rrange"></i>
+            <i class="rghost" id="rghost"></i>
             <i class="rmark" id="rmark"><b id="rval"></b></i>
           </div>
           <div class="rticks" dir="ltr"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span></div>
@@ -43,6 +45,7 @@
             <div class="tank-ph"><small>pH</small><bdi id="tankph" dir="ltr">12</bdi></div>
             <div class="tank-fill"><i id="tankfill"></i></div>
             <button class="strength" id="strength" type="button" title="חוזק (X)"><bdi dir="ltr">×1</bdi></button>
+            <span class="tanklow" id="tanklow" hidden>נגמר!</span>
           </div>
           <div class="valves panel" role="group" aria-label="שסתומים">
             <button type="button" class="valve acid" data-valve="acid" title="חומצה (1)"><span class="vi"></span><small>חומצה <kbd>1</kbd></small><b class="lvl"><i></i></b></button>
@@ -115,6 +118,7 @@
           <div class="row">
             <button type="button" class="primary" id="rnext">המשימה הבאה ▶</button>
             <button type="button" id="rretry">נסו שוב ↻</button>
+            <button type="button" id="rhint">נסו שוב עם רמז 💡</button>
             <button type="button" id="rmenu">תפריט</button>
           </div>
         </div>
@@ -130,6 +134,12 @@
           </div>
           <label class="opt"><input type="checkbox" id="opt-motion2" /> הפחתת תנועה</label>
           <label class="opt"><input type="checkbox" id="opt-mute2" /> השתקה</label>
+          <div class="keys small">
+            <span><kbd>WASD</kbd> תנועה</span><span><kbd>עכבר</kbd> כיוון</span><span><kbd>לחיצה</kbd>/<kbd>רווח</kbd> ריסוס</span>
+            <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> שסתום</span><span><kbd>X</kbd> חוזק</span><span><kbd>R</kbd> לקמוס</span>
+            <span><kbd>F</kbd> פנולפתלאין</span><span><kbd>G</kbd> אוניברסלי</span><span><kbd>T</kbd> נוגד חומצה</span>
+            <span><kbd>H</kbd> רמז</span><span><kbd>Esc</kbd> הפסקה</span><span><kbd>Shift</kbd> ריצה</span>
+          </div>
           <p class="small">צבעי האינדיקטור תמיד מופיעים יחד עם מספר או סמל.</p>
         </div>
       </div>

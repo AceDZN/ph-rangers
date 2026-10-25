@@ -229,3 +229,62 @@ All models: **Y up, base at y ≈ 0, largest dimension = 1.0**. Bounds below are
 
 - Verified: every shipped file reads with gltf-transform (bounds, triangle counts, required extensions and texture sizes from `inspect`). Clip names and durations come from the shipped GLBs. Joint counts were checked, and hand/hips world positions were sampled with forward kinematics at 0/25/50/75 % of each clip. Each prop was checked by eye in the Tripo viewer before export.
 - Not verified: rendering inside the game (three.js loading and the look under the game's lighting). Facing for the buildings and fish was inferred from geometry (where the detail and the thin tail are); for the characters it comes from the Mixamo convention plus the forward reach in the clips.
+
+## Round 3 (UX review: lemon crate, lemons, flowers)
+
+Same rules and tooling as rounds 1–2: Tripo Studio in the user's signed-in Chrome (own tab, closed at the end), existing credits only, no purchase/upgrade/API/other generator. All tasks are text-to-3D, **HD Model, H3.1, 2K texture, PBR, triangles, Ultra Mesh off**. Polycount (account-wide setting) was **6 000** for the crate (already set when this round started) and **3 000** for lemon, anemone and poppy-daisy; it was put back to 6 000 at the end (the field read 6 000; whether Tripo saved it account-wide was not re-checked).
+
+| Item | Task | Credits |
+|---|---|---|
+| lemon-crate | https://studio.tripo3d.ai/workspace/generate/ed90e50b-f90e-40fb-997e-687a8ea6626c | 30 |
+| lemon | https://studio.tripo3d.ai/workspace/generate/889ebf48-6ace-4275-b475-57d7954a88f4 | 30 |
+| anemone | https://studio.tripo3d.ai/workspace/generate/8dace501-2e8c-4be6-8f18-1e6e4de7bc81 | 30 |
+| poppy-daisy (optional) | https://studio.tripo3d.ai/workspace/generate/e8a2d1bf-3ad7-47cb-8235-4e8ba60228b8 | 30 |
+
+**Round 3 total: 120 credits** (4 generations × 30; GLB exports are free). Balance 8 215 at the start → 8 185 → 8 155 → 8 125 → 8 095 after each submit, and still 8 095 after the four exports.
+
+### Processing (round 3)
+
+Originals (Tripo Export → GLB, texture 1k) are in the session scratchpad `originals3/phr3-<name>-original.glb`.
+
+```sh
+npx -y @gltf-transform/cli@4 optimize phr3-lemon-crate-original.glb public/models/lemon-crate.glb \
+  --texture-compress webp --texture-size 1024
+npx -y @gltf-transform/cli@4 optimize phr3-<lemon|anemone|poppy-daisy>-original.glb public/models/<name>.glb \
+  --texture-compress webp --texture-size 512
+```
+
+All four need `EXT_meshopt_compression` + `KHR_mesh_quantization` + `EXT_texture_webp` (same as the other props). One mesh, one opaque PBR material each (no alpha cutout, so no sorting issues when instanced). **Y up, base at y ≈ 0, largest dimension = 1.0.** Bounds are from `gltf-transform inspect` of the shipped files.
+
+### lemon-crate.glb (replaces the brown cube crate in mission 1)
+
+- Prompt: "Stylized game prop: a small rustic wooden fruit crate tipped over on its side on the ground, open side facing forward, made of warm honey-brown slatted wooden planks with visible nails and a faded paper fruit label, five or six bright plump yellow lemons with a few green leaves spilling out of the open crate and lying on the ground in front of it, flat base resting on the ground, chunky readable silhouette, clean hand-painted textures, warm sunny Mediterranean look, Pixar-like stylized look for a kid-friendly 3D adventure game, single object, no ground plane, no puddle, no text"
+- Result: an orange-honey slatted crate lying on its side, open face forward, with four big lemons and a few leaves piled at the opening, and a faded paper label on one side panel. 5 149 tris in Tripo (5 079 shipped).
+- Bounds: (-0.384, 0, -0.5) → (0.384, 0.620, 0.5). **Open side and lemons face +Z**: the slab check along Z shows the full-height crate body from z = −0.5 to about +0.2 and only low geometry (lemons/leaves, under ~0.3 high) from +0.2 to +0.5. Scale ×0.7 gives a crate about 0.54 m wide and 0.43 m tall.
+- Sizes: 797 144 B → 206 804 B. sha256 `318ceb8efe87339ea0b726061802eb19abc0416777386a24027c94dc974fb94a`
+
+### lemon.glb (replaces the floating sphere lemons)
+
+- Prompt: "Stylized game prop: a single whole bright sunny-yellow lemon lying on its side, classic oval lemon shape with pointed nubs at both ends, slightly bumpy glossy peel with subtle pores, a tiny green stem with one small green leaf, chunky readable shape, clean hand-painted textures, Pixar-like stylized look for a kid-friendly 3D adventure game, single object, no ground, no slice, no plate"
+- Result: a plump yellow lemon lying on its side with a two-leaf sprig at one end. 2 968 tris in Tripo (2 928 shipped).
+- Bounds: (-0.5, 0, -0.339) → (0.5, 0.668, 0.339). Long axis X; the leaf is at the −X end. Sits on its side with its base at y = 0, so it rests on the ground without floating. A real lemon is ~8–9 cm long, so scale ~0.09 (or ~0.12–0.15 to read at game distance). Rotate randomly about Y when scattering.
+- Sizes: 384 700 B → 48 904 B. sha256 `535ea946025a7a3c48c488ec21e81b20094f3876d5a4fb18c6f15775d94d126b`
+
+### anemone.glb (כלנית, replaces the flat disc flowers when ground is restored)
+
+- Prompt: "Stylized game prop: a small low clump of wild red anemone flowers (Anemone coronaria, Galilee spring wildflower), four or five open cup-shaped flowers with big bold scarlet-red petals and a dark black-purple centre, held on short thin green stems at slightly different heights, a low rosette of finely divided feathery green leaves at the base, simple chunky readable shapes that read clearly from far away, clean hand-painted textures, Pixar-like stylized look for a kid-friendly 3D adventure game, single plant clump, no pot, no ground, no soil base"
+- Result: five scarlet cup flowers with black centres on green stems over a feathery leaf rosette. 2 857 tris in Tripo (2 831 shipped).
+- Bounds: (-0.5, 0, -0.394) → (0.5, 0.904, 0.394). The flower heads are on the upper third and lean toward +X. For ~25 cm tall use scale ≈ 0.28 (about 28 × 22 cm footprint). Rotate randomly about Y when instancing.
+- Sizes: 604 988 B → 83 252 B. sha256 `8a974a4736f7b89f9679ffa019dc08057133bbc7898663b67793b449537c373c`
+
+### poppy-daisy.glb (optional: white daisy + yellow crown daisy clump)
+
+- Prompt: "Stylized game prop: a small low mixed clump of Galilee spring wildflowers, three white daisies with yellow centres and three bright golden-yellow crown daisies (chrysanthemum coronarium), open flat flower heads facing up and outward on short green stems at slightly different heights, a low tuft of green leaves at the base, simple chunky readable shapes that read clearly from far away, clean hand-painted textures, Pixar-like stylized look for a kid-friendly 3D adventure game, single plant clump, no pot, no ground, no soil base"
+- Result: mostly yellow. One white daisy and four golden-yellow crown daisies on green stems over a leaf tuft (Tripo did not keep the 3 + 3 mix). 2 862 tris in Tripo (2 836 shipped).
+- Bounds: (-0.5, 0, -0.355) → (0.5, 0.915, 0.355). Scale ≈ 0.28 for ~25 cm. Mix it with anemone.glb for colour variety.
+- Sizes: 552 028 B → 76 752 B. sha256 `73dde55798f71dd320885d702342b8d50e8af50a58affc50bcb10d8224fc89a7`
+
+### Verified vs not verified (round 3)
+
+- Verified: each model was checked by eye in the Tripo viewer before export (the crate from two angles). Each shipped file reads with gltf-transform `inspect`: bounds, triangle counts, extensions, and texture sizes (crate 1024², others 512²). The crate's +Z open side and the lemon's −X leaf end were found from vertex slab checks, not by eye in the game.
+- Not verified: rendering in the game (three.js load, scale, look under the game's lighting, instancing performance for hundreds of flowers).

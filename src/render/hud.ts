@@ -284,7 +284,8 @@ export class Hud {
       // Clamp to an ellipse just inside the screen edge and point outward.
       const ang = Math.atan2(y, x);
       const ex = Math.cos(ang) * 0.86;
-      const ey = Math.sin(ang) * 0.8;
+      // Keep arrows clear of the bottom HUD (ruler, tank, gadgets).
+      const ey = Math.max(-0.5, Math.sin(ang) * 0.8);
       el.style.display = '';
       el.className = `arrow ${t.cls}`;
       el.style.left = `${((ex + 1) / 2) * w}px`;

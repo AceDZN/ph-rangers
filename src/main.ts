@@ -755,18 +755,24 @@ function footsteps(dt: number) {
 function updateCamera(dt: number) {
   const p = game.player;
   if (mode === 'title' || mode === 'brief' || mode === 'result' || mode === 'loading') {
-    // Slow cinematic orbit around the ranger while menus are up.
-    const a = animT * 0.12 + (mode === 'result' ? 1.5 : 0);
-    const r = mode === 'title' ? 8.5 : 6.5;
-    const tx = p.x + Math.sin(a) * r;
-    const tz = p.z + Math.cos(a) * r;
+    // Composed menu shots with a gentle sway: over the shoulder across the valley on the title,
+    // a front view of the ranger on the brief and result cards.
     const L0 = game.mission.layout;
-    const ty = Math.max(terrainHeight(L0, tx, tz) + 1.4, p.y + (mode === 'title' ? 2.6 : 2));
-    camera.position.lerp(tmpV.set(tx, ty, tz), Math.min(1, dt * 3));
-    // Frame the ranger left of centre so the menus on the right stay clear.
-    const lx = p.x + Math.cos(a) * 1.8;
-    const lz = p.z - Math.sin(a) * 1.8;
-    camera.lookAt(lx, p.y + 1.1, lz);
+    const sway = Math.sin(animT * 0.25) * 0.18;
+    const yaw = game.mission.start.yaw + sway;
+    const fx2 = Math.sin(yaw);
+    const fz2 = Math.cos(yaw);
+    const front = mode !== 'title';
+    const dist = front ? -4.6 : 7;
+    const side = front ? 1.4 : 2.2;
+    const tx = p.x - fx2 * dist - fz2 * side;
+    const tz = p.z - fz2 * dist + fx2 * side;
+    const ty = Math.max(terrainHeight(L0, tx, tz) + 1.4, p.y + (front ? 1.7 : 3.4));
+    tmpV.set(tx, ty, tz);
+    if (camera.position.distanceTo(tmpV) > 25) camera.position.copy(tmpV);
+    else camera.position.lerp(tmpV, Math.min(1, dt * 2.5));
+    if (front) camera.lookAt(p.x - fz2 * 0.9, p.y + 1.1, p.z + fx2 * 0.9);
+    else camera.lookAt(p.x + fx2 * 14, p.y + 0.6, p.z + fz2 * 14);
     return;
   }
   const { fx: f, fz, rx, rz } = cameraBasis();
@@ -777,7 +783,8 @@ function updateCamera(dt: number) {
   const target = new THREE.Vector3(p.x - f * dist + rx * side, p.y + height, p.z - fz * dist + rz * side);
   const L = game.mission.layout;
   target.y = Math.max(target.y, terrainHeight(L, target.x, target.z) + 1.2);
-  camera.position.lerp(target, Math.min(1, dt * 10));
+  if (camera.position.distanceTo(target) > 25) camera.position.copy(target);
+  else camera.position.lerp(target, Math.min(1, dt * 10));
   // Sprint widens the view a touch; spraying pulls it in for focus.
   const fovBase = window.innerWidth < window.innerHeight ? 70 : 55;
   const fovWant = fovBase + (p.speed > 7 ? 6 : 0) - (p.spraying ? 3 : 0);

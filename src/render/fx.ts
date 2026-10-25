@@ -2,7 +2,7 @@
 // litmus markers and the ground reticle. Cosmetic only; the grid decides what happened.
 
 import * as THREE from 'three';
-import { litmus } from '../sim/chem';
+import { litmus, universalRGB } from '../sim/chem';
 import type { Game, Gadget } from '../sim/game';
 import { terrainHeight, type Layout } from '../sim/layout';
 
@@ -48,6 +48,7 @@ export class Fx {
   private tex = softSprite();
   private sprayAcc = 0;
   private jet: THREE.Mesh;
+  private cellBox: THREE.LineLoop;
   private jetOn = 0;
   reduced = false;
 
@@ -92,6 +93,12 @@ export class Fx {
       new THREE.MeshStandardMaterial({ color: 0x3d8bff, transparent: true, opacity: 0.78, roughness: 0.1, emissive: 0x112244 }),
     );
     this.jet.frustumCulled = false;
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(16 * 3), 3));
+    this.cellBox = new THREE.LineLoop(cg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false }));
+    this.cellBox.renderOrder = 6;
+    this.cellBox.frustumCulled = false;
+    scene.add(this.cellBox);
     this.jet.visible = false;
     scene.add(this.jet);
   }
@@ -186,6 +193,29 @@ export class Fx {
         this.burst(e.kind, e.x, e.z);
       }
     }
+  }
+
+  /** A puff of dust under the ranger's feet. */
+  dust(x: number, z: number, big: boolean) {
+    if (this.reduced) return;
+    const p = new THREE.Vector3(x + (Math.random() - 0.5) * 0.4, this.h(x, z) + 0.1, z + (Math.random() - 0.5) * 0.4);
+    this.puff(p, 0xd9c9a8, big ? 0.55 : 0.4, 0.6, new THREE.Vector3(0, 0.5, 0), 1.6, 0.45);
+  }
+
+  /** Ground back in its band: petals and sparkles pop up, a green ring sweeps out. */
+  restoredBurst(x: number, z: number) {
+    const y = this.h(x, z) + 0.2;
+    const cols = [0xff5252, 0xffffff, 0xffeb3b, 0xf48fb1, 0x81c784, 0xba68c8];
+    for (let k = 0; k < 26; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1.5 + Math.random() * 2.5;
+      const v = new THREE.Vector3(Math.cos(a) * sp, 3.5 + Math.random() * 3, Math.sin(a) * sp);
+      this.drops.push({ p: new THREE.Vector3(x, y, z), v, life: 0.9, max: 0.9, color: new THREE.Color(cols[k % cols.length]), size: 0.9 });
+    }
+    for (let k = 0; k < 8; k++) {
+      this.puff(new THREE.Vector3(x + (Math.random() - 0.5) * 2.5, y + 0.4, z + (Math.random() - 0.5) * 2.5), 0xd4ffb0, 0.5, 1.1, new THREE.Vector3(0, 2.4, 0), 0.5, 1);
+    }
+    this.ring(x, z, 0x76ff03, 5, 0.8);
   }
 
   private burst(kind: Gadget, x: number, z: number) {
@@ -364,6 +394,31 @@ export class Fx {
       }
     }
 
+    // Outline of the grid cell the spray will land in, coloured by what is known about it.
+    {
+      const cs = g.cell;
+      const ci = game.aim.cell % g.n;
+      const cj = Math.floor(game.aim.cell / g.n);
+      const x0 = ci * cs + 0.1;
+      const z0 = cj * cs + 0.1;
+      const x1 = x0 + cs - 0.2;
+      const z1 = z0 + cs - 0.2;
+      const pts: Array<[number, number]> = [];
+      for (let k = 0; k < 4; k++) pts.push([x0 + ((x1 - x0) * k) / 4, z0]);
+      for (let k = 0; k < 4; k++) pts.push([x1, z0 + ((z1 - z0) * k) / 4]);
+      for (let k = 0; k < 4; k++) pts.push([x1 - ((x1 - x0) * k) / 4, z1]);
+      for (let k = 0; k < 4; k++) pts.push([x0, z1 - ((z1 - z0) * k) / 4]);
+      const pa = this.cellBox.geometry.attributes.position as THREE.BufferAttribute;
+      pts.forEach(([px, pz], i) => pa.setXYZ(i, px, this.h(px, pz) + 0.12, pz));
+      pa.needsUpdate = true;
+      const r = game.readingRange(game.aim.cell);
+      const mat = this.cellBox.material as THREE.LineBasicMaterial;
+      if (r?.exact !== undefined) {
+        const [cr, cgc, cb] = universalRGB(r.exact);
+        mat.color.setRGB(cr, cgc, cb);
+      } else mat.color.setHex(r ? 0xffe082 : 0xffffff);
+      mat.opacity = 0.6 + Math.sin(game.t * 6) * 0.25;
+    }
     // Reticle on the ground at the clamped aim point.
     const ax = game.aim.x;
     const az = game.aim.z;

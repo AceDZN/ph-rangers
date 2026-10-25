@@ -1,7 +1,7 @@
 // The valley grid: every cell is a zone with water volume, signed acid/base excess, salt,
 // undissolved weak base and released heat. Spreading moves amounts, never creates them.
 
-import { netForPH, phFromNet } from './chem';
+import { netForPH, phFromNet, phFromNetNear } from './chem';
 import { GALILEE, Layout, distToPolyline, inRect, terrainHeight } from './layout';
 
 export enum Kind {
@@ -461,7 +461,7 @@ export class Grid {
   refreshPH(all = false) {
     for (let c = 0; c < this.count; c++) {
       if (!all && !this.dirty[c]) continue;
-      this.pH[c] = phFromNet(this.E[c], this.V[c], this.beta[c]);
+      this.pH[c] = all ? phFromNet(this.E[c], this.V[c], this.beta[c]) : phFromNetNear(this.E[c], this.V[c], this.beta[c], this.pH[c]);
       this.dirty[c] = 0;
     }
   }

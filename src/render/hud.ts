@@ -168,6 +168,201 @@ export class Hud {
       this.computeBadges(game);
     }
     this.placeBadges(camera, w, h);
+    this.updateScore(game);
+    this.updateRuler(game);
+    this.updateArrows(game, camera, w, h, dt);
+    this.updateVignette(game, dt);
+    const mistBtn = document.querySelector<HTMLElement>('.gadget[data-gadget="mist"]');
+    if (mistBtn) mistBtn.style.setProperty('--charge', String(game.mistCharge));
+  }
+
+  // ---------- score / combo ----------
+  private shownScore = 0;
+  private updateScore(game: Game) {
+    const target = game.score;
+    if (this.shownScore !== target) {
+      this.shownScore += Math.max(1, Math.ceil((target - this.shownScore) * 0.15));
+      if (this.shownScore > target) this.shownScore = target;
+      $('score').textContent = this.shownScore.toLocaleString('en-US');
+    }
+    const c = $('combo');
+    if (game.combo >= 2) {
+      const txt = `רצף ×${game.combo}`;
+      if (c.textContent !== txt) {
+        c.textContent = txt;
+        c.hidden = false;
+        c.style.animation = 'none';
+        void c.offsetWidth;
+        c.style.animation = '';
+      }
+    } else c.hidden = true;
+  }
+
+  bumpScore() {
+    const el = $('scorebox');
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+  }
+
+  // ---------- pH ruler: what the indicators say about the aimed ground ----------
+  private updateRuler(game: Game) {
+    const c = game.aim.cell;
+    const g = game.grid;
+    const band = g.band(c);
+    const pct = (v: number) => `${(v / 14) * 100}%`;
+    const rb = $('rband');
+    rb.style.display = 'block';
+    rb.style.left = pct(band.lo);
+    rb.style.width = `${((band.hi - band.lo) / 14) * 100}%`;
+    const r = game.readingRange(c);
+    const rr = $('rrange');
+    const rm = $('rmark');
+    const label = $('rulerlabel');
+    const known = game.readingAt(c);
+    const target = `יעד כאן: pH ${band.lo}–${band.hi}`;
+    if (!r) {
+      rr.style.display = 'none';
+      rm.style.display = 'none';
+      label.textContent = `${target} · עוד לא נמדד`;
+      return;
+    }
+    if (r.exact !== undefined) {
+      rr.style.display = 'none';
+      rm.style.display = 'block';
+      rm.style.left = pct(r.exact);
+      $('rval').textContent = r.exact.toFixed(1);
+      const inb = r.exact >= band.lo && r.exact <= band.hi;
+      label.textContent = `${target} · ${inb ? 'בטווח ✓' : r.exact < band.lo ? 'חומצי מדי – רססו בסיס' : 'בסיסי מדי – רססו חומצה'}`;
+    } else {
+      rm.style.display = 'none';
+      rr.style.display = 'block';
+      rr.style.left = pct(r.lo);
+      rr.style.width = `${((r.hi - r.lo) / 14) * 100}%`;
+      label.textContent = `${target} · ${known.text} – רק טווח, בלי מספר`;
+    }
+  }
+
+  // ---------- off-screen guidance ----------
+  private arrowT = 0;
+  private arrowTargets: Array<{ x: number; z: number; cls: string; icon: string; label: string }> = [];
+  private arrowEls: HTMLDivElement[] = [];
+  private updateArrows(game: Game, camera: THREE.Camera, w: number, h: number, dt: number) {
+    this.arrowT -= dt;
+    if (this.arrowT <= 0) {
+      this.arrowT = 0.3;
+      this.arrowTargets = this.findTargets(game);
+    }
+    const host = $('arrows');
+    while (this.arrowEls.length < this.arrowTargets.length) {
+      const el = document.createElement('div');
+      el.className = 'arrow';
+      el.innerHTML = '<span></span><small></small>';
+      host.appendChild(el);
+      this.arrowEls.push(el);
+    }
+    const L = game.mission.layout;
+    this.arrowEls.forEach((el, i) => {
+      const t = this.arrowTargets[i];
+      if (!t) {
+        el.style.display = 'none';
+        return;
+      }
+      this.v.set(t.x, terrainHeight(L, t.x, t.z) + 1, t.z).project(camera);
+      let x = this.v.x;
+      let y = this.v.y;
+      const behind = this.v.z > 1;
+      if (behind) {
+        x = -x;
+        y = -y;
+      }
+      const onScreen = !behind && Math.abs(x) < 0.92 && Math.abs(y) < 0.86;
+      if (onScreen) {
+        el.style.display = 'none';
+        return;
+      }
+      // Clamp to an ellipse just inside the screen edge and point outward.
+      const ang = Math.atan2(y, x);
+      const ex = Math.cos(ang) * 0.86;
+      const ey = Math.sin(ang) * 0.8;
+      el.style.display = '';
+      el.className = `arrow ${t.cls}`;
+      el.style.left = `${((ex + 1) / 2) * w}px`;
+      el.style.top = `${((1 - ey) / 2) * h}px`;
+      // The tail corner of the bubble points toward the target.
+      el.style.setProperty('--rot', `${-ang * (180 / Math.PI) + 135 + 90}deg`);
+      (el.firstChild as HTMLElement).textContent = t.icon;
+      (el.lastChild as HTMLElement).textContent = t.label;
+    });
+  }
+
+  private findTargets(game: Game) {
+    const g = game.grid;
+    const p = game.player;
+    const out: Array<{ x: number; z: number; cls: string; icon: string; label: string }> = [];
+    // Assets in danger first.
+    for (const a of game.assets) {
+      if (a.health < 99 && (a.pH < a.lo || a.pH > a.hi)) out.push({ x: a.at[0], z: a.at[1], cls: 'danger', icon: '⚠', label: a.name });
+    }
+    // Nearest unmeasured suspect patch.
+    let best = -1;
+    let bd = Infinity;
+    for (let c = 0; c < g.count; c++) {
+      if (!g.suspect[c] || g.know[c] & KNOW_UNIVERSAL) continue;
+      const [x, z] = g.center(c);
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    if (best >= 0) {
+      const [x, z] = g.center(best);
+      out.push({ x, z, cls: '', icon: '?', label: 'לא נמדד' });
+    }
+    // Wagon when the tank or the mist runs low.
+    const L = game.loadout;
+    const low = game.tank.acid < L.acid * 0.15 || game.tank.base < L.base * 0.15 || (game.gadgets.mist === 0 && L.mist > 0);
+    if (low && game.mission.wagons.length) {
+      let w = game.mission.wagons[0];
+      let wd = Infinity;
+      for (const ww of game.mission.wagons) {
+        const d = Math.hypot(ww[0] - p.x, ww[1] - p.z);
+        if (d < wd) {
+          wd = d;
+          w = ww;
+        }
+      }
+      out.push({ x: w[0], z: w[1], cls: 'wagon', icon: '⛽', label: 'עגלת אספקה' });
+    }
+    return out.slice(0, 4);
+  }
+
+  // ---------- danger vignette ----------
+  private lastHealth = new Map<string, number>();
+  private vig = 0;
+  private updateVignette(game: Game, dt: number) {
+    let falling = false;
+    for (const a of game.assets) {
+      const prev = this.lastHealth.get(a.id) ?? a.health;
+      if (a.health < prev - 1e-6 && a.health < 70) falling = true;
+      this.lastHealth.set(a.id, a.health);
+    }
+    this.vig += ((falling ? 0.55 : 0) - this.vig) * Math.min(1, dt * 4);
+    $('vignette').style.opacity = String(this.vig);
+  }
+
+  /** Floating "+points" text at a world point. */
+  floater(camera: THREE.Camera, w: number, h: number, x: number, y: number, z: number, text: string, cls = '') {
+    this.v.set(x, y, z).project(camera);
+    if (this.v.z > 1) return;
+    const el = document.createElement('div');
+    el.className = `floater ${cls}`;
+    el.textContent = text;
+    el.style.left = `${((this.v.x + 1) / 2) * w}px`;
+    el.style.top = `${((1 - this.v.y) / 2) * h}px`;
+    $('floaters').appendChild(el);
+    setTimeout(() => el.remove(), 1400);
   }
 
   private computeBadges(game: Game) {
